@@ -7,6 +7,17 @@
     android:background="@color/fundocartao"
     android:fitsSystemWindows="true">
 
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:layout_gravity="center"
+        android:paddingBottom="8dp"
+        android:paddingTop="0dp"
+        android:paddingLeft="0dp"
+        android:paddingRight="0dp">
+
     <com.google.android.material.progressindicator.CircularProgressIndicator
         android:layout_width="48dp"
         android:layout_height="48dp"
@@ -15,5 +26,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:indicatorColor="?attr/colorPrimary" />
+    </LinearLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
