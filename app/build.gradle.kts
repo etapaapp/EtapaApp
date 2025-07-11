@@ -12,7 +12,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "21.0"
+        versionName = "22.0"
         buildConfigField("String", "EAD_URL", "\"${project.properties["EAD_URL"]}\"")
         buildConfigField("String", "GITHUB_PAT", "\"${project.properties["GITHUB_PAT"]}\"")
     }
@@ -51,7 +51,6 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
-    implementation (libs.material)
     implementation (libs.jsoup)
     implementation (libs.gson)
     implementation (libs.work.runtime.ktx)
@@ -61,6 +60,5 @@ dependencies {
     implementation (libs.logging.interceptor)
     implementation (libs.guava)
     implementation (libs.glide)
-    implementation (libs.gson.v2101)
     annotationProcessor (libs.compiler)
 }
