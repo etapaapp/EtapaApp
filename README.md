@@ -1,4 +1,4 @@
-# Etapa Client #
+# EtapaApp #
 
 <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/src/main/ic_launcher-playstore.png" width="200"/> 
 
