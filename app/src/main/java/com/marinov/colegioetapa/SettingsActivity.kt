@@ -222,11 +222,11 @@ class SettingsActivity : AppCompatActivity() {
     private fun checkUpdate() = coroutineScope.launch {
         try {
             val (json, responseCode) = withContext(Dispatchers.IO) {
-                val url = URL("https://api.github.com/repos/etapaapp/EtapaClient/releases/latest")
+                val url = URL("https://api.github.com/repos/etapaapp/EtapaApp/releases/latest")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                connection.setRequestProperty("User-Agent", "EtapaClient-Android")
+                connection.setRequestProperty("User-Agent", "EtapaApp-Android")
                 connection.connectTimeout = 10000
                 connection.connect()
 
@@ -322,7 +322,7 @@ class SettingsActivity : AppCompatActivity() {
             connection.connect()
 
             val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val outputDir = File(downloadsDir, "EtapaClient").apply {
+            val outputDir = File(downloadsDir, "EtapaApp").apply {
                 if (exists()) deleteRecursively()
                 mkdirs()
             }

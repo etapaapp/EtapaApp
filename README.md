@@ -1,17 +1,17 @@
 # Etapa Client #
 
-<img src="https://github.com/etapaapp/EtapaClient/blob/master/app/src/main/ic_launcher-playstore.png" width="200"/> 
+<img src="https://github.com/etapaapp/EtapaApp/blob/master/app/src/main/ic_launcher-playstore.png" width="200"/> 
 
 Meu cliente alternativo para acessar https://areaexclusiva.colegioetapa.com.br/ em dispositivos Android, com funcionalidades extras ao aplicativo original.
 
-<img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/tablet_1.png" width="300"/> <img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/tablet_2.png" width="300"/> 
-<img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/tablet_3.png" width="300"/> <img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/tablet_4.png" width="300"/>
+<img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/tablet_1.png" width="300"/> <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/tablet_2.png" width="300"/> 
+<img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/tablet_3.png" width="300"/> <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/tablet_4.png" width="300"/>
 
-<img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/phone_1.jpg" width="180"/> <img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/phone_2.jpg" width="180"/> 
-<img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/phone_3.jpg" width="180"/>
+<img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/phone_1.jpg" width="180"/> <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/phone_2.jpg" width="180"/> 
+<img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/phone_3.jpg" width="180"/>
 
-<img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/phone_8.jpg" width="180"/> <img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/phone_9.jpg" width="180"/> 
-<img src="https://github.com/etapaapp/EtapaClient/blob/master/app/imagens/phone_10.jpg" width="180"/>
+<img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/phone_8.jpg" width="180"/> <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/phone_9.jpg" width="180"/> 
+<img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/phone_10.jpg" width="180"/>
 
 ✅ FUNCIONALIDADES:
 1. Acesso ao Etapa Digital;
@@ -41,7 +41,7 @@ Requisitos mínimos:
 1. Android 7.0 ou superior (o suporte para Android 6.0 ou inferior foi removido pois é impossível fazer login);
 2. Android System Webview na versão mais recente possível.
 
-Baixe o apk aqui (baixe a versão mais recente disponível, identificada em verde com "Latest"): https://github.com/etapaapp/EtapaClient/releases
+Baixe o apk aqui (baixe a versão mais recente disponível, identificada em verde com "Latest"): https://github.com/etapaapp/EtapaApp/releases
 
 # Algumas observações! #
 

@@ -24,12 +24,12 @@ object UpdateChecker {
     fun checkForUpdate(context: Context, listener: UpdateListener) {
         Thread {
             runCatching {
-                val url = URL("https://api.github.com/repos/etapaapp/EtapaClient/releases/latest")
+                val url = URL("https://api.github.com/repos/etapaapp/EtapaApp/releases/latest")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.apply {
                     requestMethod = "GET"
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
-                    setRequestProperty("User-Agent", "EtapaClient-Android")
+                    setRequestProperty("User-Agent", "EtapaApp-Android")
                     connectTimeout = 10000
                 }
 
