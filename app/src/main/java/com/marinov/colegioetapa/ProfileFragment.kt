@@ -39,7 +39,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 class ProfileFragment : Fragment() {
     private lateinit var webView: WebView
-    private lateinit var progressBar: com.google.android.material.progressindicator.CircularProgressIndicator
     private lateinit var profileContainer: LinearLayout
     private lateinit var layoutSemInternet: LinearLayout
     private lateinit var btnTentarNovamente: MaterialButton
@@ -66,7 +65,6 @@ class ProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         webView = view.findViewById(R.id.webView)
-        progressBar = view.findViewById(R.id.progressBar)
         profileContainer = view.findViewById(R.id.profileContainer)
         layoutSemInternet = view.findViewById(R.id.layout_sem_internet)
         btnTentarNovamente = view.findViewById(R.id.btn_tentar_novamente)
