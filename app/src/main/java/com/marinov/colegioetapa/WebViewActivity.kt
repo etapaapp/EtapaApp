@@ -46,8 +46,7 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.mediaPlaybackRequiresUserGesture = false
-
-        // Configurações adicionais para downloads
+        webView.settings.userAgentString = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15"
         webView.settings.allowFileAccess = true
         webView.settings.allowContentAccess = true
         webView.settings.loadWithOverviewMode = true
