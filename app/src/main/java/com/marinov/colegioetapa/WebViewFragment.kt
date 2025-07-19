@@ -157,7 +157,7 @@ class WebViewFragment : Fragment() {
             useWideViewPort = true
             builtInZoomControls = true
             displayZoomControls = false
-            userAgentString = "\"Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15"
+            userAgentString = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15"
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
             // Forçar tema escuro usando o método original para manter compatibilidade
