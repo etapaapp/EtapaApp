@@ -15,7 +15,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
@@ -28,13 +27,11 @@ class EADFragment : Fragment() {
     private companion object {
         const val AUTH_CHECK_URL = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
         const val PREFS_NAME = "app_prefs"
-        const val KEY_SHOW_WARNING = "show_warning"
+        const val KEY_SHOW_WARNING = "show_warning_ead_antigos"
     }
 
     private lateinit var layoutSemInternet: LinearLayout
     private lateinit var btnTentarNovamente: MaterialButton
-    private lateinit var loadingContainer: FrameLayout
-    private lateinit var webViewContainer: FrameLayout
     private val handler = Handler(Looper.getMainLooper())
     private val eadUrl = BuildConfig.EAD_URL
 
@@ -43,7 +40,7 @@ class EADFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        return inflater.inflate(R.layout.fragment_pages, container, false)
+        return inflater.inflate(R.layout.fragment_ead_antigos, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -54,10 +51,8 @@ class EADFragment : Fragment() {
     }
 
     private fun setupViews(view: View) {
-        loadingContainer = view.findViewById(R.id.loadingContainer)
         layoutSemInternet = view.findViewById(R.id.layout_sem_internet)
         btnTentarNovamente = view.findViewById(R.id.btn_tentar_novamente)
-        webViewContainer = view.findViewById(R.id.webViewContainer)
 
         btnTentarNovamente.setOnClickListener {
             navigateToHomeFragment()
@@ -79,7 +74,6 @@ class EADFragment : Fragment() {
             return
         }
 
-        loadingContainer.visibility = View.VISIBLE
         performAuthCheck()
     }
 
@@ -100,10 +94,10 @@ class EADFragment : Fragment() {
                 ) { value ->
                     val isAuthenticated = value == "true"
                     if (isAuthenticated) {
-                        checkAndShowWarningDialog()
-                        loadEadWebView()
+                        checkAndShowWarningDialog {
+                            startWebViewActivityAndPop()
+                        }
                     } else {
-                        // Usuário não autenticado - mostrar tela offline
                         showNoInternetUI()
                     }
                     authWebView.destroy()
@@ -115,7 +109,6 @@ class EADFragment : Fragment() {
                 request: WebResourceRequest?,
                 error: WebResourceError?
             ) {
-                // Erro de rede durante a verificação de autenticação
                 showNoInternetUI()
                 authWebView.destroy()
             }
@@ -125,7 +118,6 @@ class EADFragment : Fragment() {
                 request: WebResourceRequest?,
                 errorResponse: WebResourceResponse?
             ) {
-                // Erro HTTP durante a verificação de autenticação
                 showNoInternetUI()
                 authWebView.destroy()
             }
@@ -133,19 +125,7 @@ class EADFragment : Fragment() {
         authWebView.loadUrl(AUTH_CHECK_URL)
     }
 
-    private fun loadEadWebView() {
-        handler.post {
-            loadingContainer.visibility = View.GONE
-            val webViewFragment = WebViewFragment().apply {
-                arguments = WebViewFragment.createArgs(eadUrl)
-            }
-            childFragmentManager.beginTransaction()
-                .replace(R.id.webViewContainer, webViewFragment)
-                .commit()
-        }
-    }
-
-    private fun checkAndShowWarningDialog() {
+    private fun checkAndShowWarningDialog(onDismiss: () -> Unit) {
         val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val shouldShowWarning = prefs.getBoolean(KEY_SHOW_WARNING, true)
 
@@ -153,24 +133,42 @@ class EADFragment : Fragment() {
             AlertDialog.Builder(requireContext())
                 .setTitle("ATENÇÃO!")
                 .setMessage("Essa função é instável e pode não funcionar em todos os dispositivos! Essa página só exibe uma página com o compartilhamento de arquivos dos EADs antigos, caso tenha problemas em acessar mande um email para: etapa.app@outlook.com.br. Recomendado uso em tablets para melhor visibilidade.")
-                .setPositiveButton("Entendi") { dialog, _ -> dialog.dismiss() }
+                .setPositiveButton("Entendi") { dialog, _ ->
+                    dialog.dismiss()
+                    onDismiss()
+                }
                 .setNegativeButton("Não mostrar novamente") { dialog, _ ->
                     prefs.edit {
                         putBoolean(KEY_SHOW_WARNING, false)
                     }
                     dialog.dismiss()
+                    onDismiss()
                 }
                 .setCancelable(false)
                 .show()
+        } else {
+            onDismiss()
         }
+    }
 
-        // Carregar o WebView mesmo mostrando o aviso
-        loadEadWebView()
+    private fun startWebViewActivityAndPop() {
+        WebViewActivity.start(requireContext(), eadUrl)
+        view?.post {
+            if (isAdded && !parentFragmentManager.isDestroyed && !parentFragmentManager.isStateSaved) {
+                try {
+                    parentFragmentManager.popBackStackImmediate()
+                } catch (_: IllegalStateException) {
+                    parentFragmentManager.executePendingTransactions()
+                    if (parentFragmentManager.backStackEntryCount > 0) {
+                        parentFragmentManager.popBackStackImmediate()
+                    }
+                }
+            }
+        }
     }
 
     private fun showNoInternetUI() {
         handler.post {
-            loadingContainer.visibility = View.GONE
             layoutSemInternet.visibility = View.VISIBLE
         }
     }
