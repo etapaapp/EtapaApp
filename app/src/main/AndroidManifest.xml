@@ -52,7 +52,7 @@
             android:exported="true"
             android:theme="@style/Theme.ColégioEtapa"
             android:windowSoftInputMode="adjustResize"
-            android:configChanges="orientation|screenSize">
+            android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
