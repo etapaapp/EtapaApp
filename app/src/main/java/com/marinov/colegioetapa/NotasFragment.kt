@@ -28,7 +28,7 @@ import org.jsoup.nodes.Element
 import java.text.DecimalFormat
 import androidx.core.content.edit
 
-class NotasFragment : Fragment() {
+class NotasFragment : Fragment(), MainActivity.RefreshableFragment { // Implemente a interface
 
     private companion object {
         const val URL_NOTAS = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
@@ -39,6 +39,7 @@ class NotasFragment : Fragment() {
     private lateinit var tableNotas: TableLayout
     private lateinit var barOffline: LinearLayout
     private lateinit var cache: CacheHelper
+    private var isRefreshing = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -65,6 +66,13 @@ class NotasFragment : Fragment() {
             }
         }
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, callback)
+    }
+
+    // Implementação do Pull-to-Refresh
+    override fun onRefresh() {
+        Log.d("NotasFragment", "Pull-to-Refresh acionado")
+        isRefreshing = true
+        fetchNotas()
     }
 
     @SuppressLint("SetTextI18n")
@@ -233,6 +241,12 @@ class NotasFragment : Fragment() {
                     loadCachedData()
                     showOfflineBar()
                 }
+            } finally {
+                // Parar o refresh indicador ao finalizar
+                if (isRefreshing) {
+                    (activity as? MainActivity)?.setRefreshing(false)
+                    isRefreshing = false
+                }
             }
         }
     }
@@ -246,6 +260,12 @@ class NotasFragment : Fragment() {
             if (table != null) {
                 parseAndBuildTable(table)
             }
+        }
+        
+        // Se estava atualizando, parar o refresh
+        if (isRefreshing) {
+            (activity as? MainActivity)?.setRefreshing(false)
+            isRefreshing = false
         }
     }
 
