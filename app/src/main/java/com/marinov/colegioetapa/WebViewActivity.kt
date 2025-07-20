@@ -31,6 +31,7 @@ class WebViewActivity : AppCompatActivity() {
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var fullscreenContainer: FrameLayout
     private var originalOrientation: Int = 0
+    private var webChromeClient: WebChromeClient? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,10 +44,10 @@ class WebViewActivity : AppCompatActivity() {
         hideSystemBars()
 
         webView = findViewById(R.id.webview)
-
+        
         // Criar container para fullscreen
         fullscreenContainer = FrameLayout(this)
-
+        
         setupWebView()
         setupDownloadListener()
         setupBackPressHandler()
@@ -65,13 +66,13 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.allowContentAccess = true
         webView.settings.loadWithOverviewMode = true
         webView.settings.useWideViewPort = true
-
+        
         // Configurações importantes para vídeo
         webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         webView.settings.javaScriptCanOpenWindowsAutomatically = true
 
         // Configurações para vídeos em tela cheia
-        webView.webChromeClient = object : WebChromeClient() {
+        webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
                 // Se já existe uma view customizada, sair dela primeiro
                 if (customView != null) {
@@ -88,7 +89,7 @@ class WebViewActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 ))
-
+                
                 fullscreenContainer.addView(view, FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -132,6 +133,9 @@ class WebViewActivity : AppCompatActivity() {
                 return null
             }
         }
+        
+        // Atribuir o WebChromeClient ao WebView
+        webView.webChromeClient = webChromeClient
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
@@ -209,10 +213,10 @@ class WebViewActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 // Se estiver em fullscreen, sair do fullscreen primeiro
                 if (customView != null) {
-                    webView.webChromeClient?.onHideCustomView()
+                    webChromeClient?.onHideCustomView()
                     return
                 }
-
+                
                 // Se pode voltar no WebView
                 if (webView.canGoBack()) {
                     webView.goBack()
@@ -241,23 +245,23 @@ class WebViewActivity : AppCompatActivity() {
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-
+        
         // Para compatibilidade com versões mais antigas
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                )
+            View.SYSTEM_UI_FLAG_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        )
     }
 
     override fun onDestroy() {
         // Limpar recursos quando a activity for destruída
         if (customView != null) {
-            webView.webChromeClient?.onHideCustomView()
+            webChromeClient?.onHideCustomView()
         }
         super.onDestroy()
     }
