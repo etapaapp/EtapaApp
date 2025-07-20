@@ -4,15 +4,18 @@ import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -24,15 +27,26 @@ import androidx.core.view.WindowInsetsControllerCompat
 class WebViewActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
+    private var customView: View? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
+    private lateinit var fullscreenContainer: FrameLayout
+    private var originalOrientation: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_webview)
 
+        // Salvar orientação original
+        originalOrientation = requestedOrientation
+
         // Configurar para tela cheia (ocultar barras do sistema)
         hideSystemBars()
 
         webView = findViewById(R.id.webview)
+
+        // Criar container para fullscreen
+        fullscreenContainer = FrameLayout(this)
+
         setupWebView()
         setupDownloadListener()
         setupBackPressHandler()
@@ -52,21 +66,80 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.loadWithOverviewMode = true
         webView.settings.useWideViewPort = true
 
+        // Configurações importantes para vídeo
+        webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        webView.settings.javaScriptCanOpenWindowsAutomatically = true
+
         // Configurações para vídeos em tela cheia
         webView.webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                super.onShowCustomView(view, callback)
-                view?.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+                // Se já existe uma view customizada, sair dela primeiro
+                if (customView != null) {
+                    onHideCustomView()
+                    return
+                }
+
+                customView = view
+                customViewCallback = callback
+
+                // Adicionar a view de fullscreen ao container
+                val decor = window.decorView as FrameLayout
+                decor.addView(fullscreenContainer, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ))
+
+                fullscreenContainer.addView(view, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ))
+
+                // Ocultar WebView original
+                webView.visibility = View.GONE
+
+                // Configurar orientação para landscape se necessário
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+
+                // Configurar para tela cheia completa
+                hideSystemBarsCompletely()
+            }
+
+            override fun onHideCustomView() {
+                // Se não há view customizada, não fazer nada
+                if (customView == null) return
+
+                // Mostrar WebView original
+                webView.visibility = View.VISIBLE
+
+                // Remover view de fullscreen
+                val decor = window.decorView as FrameLayout
+                decor.removeView(fullscreenContainer)
+                fullscreenContainer.removeAllViews()
+
+                customView = null
+                customViewCallback?.onCustomViewHidden()
+                customViewCallback = null
+
+                // Restaurar orientação original
+                requestedOrientation = originalOrientation
+
+                // Restaurar sistema de barras normal
+                hideSystemBars()
+            }
+
+            override fun getVideoLoadingProgressView(): View? {
+                // Você pode retornar uma view customizada para loading de vídeo
+                return null
             }
         }
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                // Manter tela cheia mesmo após carregamento
-                hideSystemBars()
+                // Manter tela cheia mesmo após carregamento (apenas se não estiver em fullscreen)
+                if (customView == null) {
+                    hideSystemBars()
+                }
             }
         }
     }
@@ -134,6 +207,13 @@ class WebViewActivity : AppCompatActivity() {
         // Usar OnBackPressedDispatcher em vez de onBackPressed deprecated
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                // Se estiver em fullscreen, sair do fullscreen primeiro
+                if (customView != null) {
+                    webView.webChromeClient?.onHideCustomView()
+                    return
+                }
+
+                // Se pode voltar no WebView
                 if (webView.canGoBack()) {
                     webView.goBack()
                 } else {
@@ -152,6 +232,34 @@ class WebViewActivity : AppCompatActivity() {
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+    }
+
+    private fun hideSystemBarsCompletely() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
+        // Para compatibilidade com versões mais antigas
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                )
+    }
+
+    override fun onDestroy() {
+        // Limpar recursos quando a activity for destruída
+        if (customView != null) {
+            webView.webChromeClient?.onHideCustomView()
+        }
+        super.onDestroy()
     }
 
     companion object {
