@@ -1,4 +1,5 @@
 package com.marinov.colegioetapa
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -21,6 +22,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
@@ -31,16 +33,25 @@ import com.google.android.material.navigationrail.NavigationRailView
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
+
+    // Interface para comunicação com os Fragments
+    interface RefreshableFragment {
+        fun onRefresh()
+    }
+
     companion object {
         private const val REQUEST_NOTIFICATION_PERMISSION = 100
         private const val TAG = "MainActivity"
     }
+
     private var currentFragment: Fragment? = null
     private lateinit var bottomNav: BottomNavigationView
     private lateinit var navRail: NavigationRailView
+    private lateinit var swipeRefreshLayout: SwipeRefreshLayout // Novo componente
     private var isLayoutReady = false
     private var currentFragmentId = View.NO_ID
     private var isUpdatingSelection = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         configureSystemBarsForLegacyDevices()
@@ -50,6 +61,20 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             Color.BLACK
         )
         setContentView(R.layout.activity_main)
+
+        // Referência ao SwipeRefreshLayout
+        swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
+
+        // Configuração do Pull-to-Refresh
+        swipeRefreshLayout.setOnRefreshListener {
+            (currentFragment as? RefreshableFragment)?.onRefresh() ?: run {
+                swipeRefreshLayout.isRefreshing = false
+            }
+        }
+
+        // Desabilita refresh enquanto rola para baixo
+        swipeRefreshLayout.setDistanceToTriggerSync(250)
+
         val toolbar: MaterialToolbar = findViewById(R.id.topAppBar)
         setSupportActionBar(toolbar)
         ViewCompat.setOnApplyWindowInsetsListener(toolbar) { v, insets ->
@@ -64,17 +89,15 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
         }
         bottomNav = findViewById(R.id.bottom_navigation)
         navRail = findViewById(R.id.navigation_rail)
+
         // Aguardar layout estar pronto
         val rootView = findViewById<View>(R.id.main)
         rootView.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
             override fun onGlobalLayout() {
                 if (isLayoutReady) return
-                // Remover listener após primeira execução
                 rootView.viewTreeObserver.removeOnGlobalLayoutListener(this)
                 isLayoutReady = true
-                // Configurar navegação após o layout estar pronto
                 configureNavigationForDevice()
-                // Processar intenção inicial
                 handleIntent(intent)
             }
         })
@@ -82,37 +105,25 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
         iniciarNotasWorker()
         iniciarUpdateWorker()
     }
-    override fun onLoginSuccess() {
-        // Encontrar o HomeFragment atual e notificar sobre o login bem-sucedido
-        val currentFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment)
-        // Se o fragment atual não é HomeFragment, procurar na pilha de fragments
-        if (currentFragment !is HomeFragment) {
-            // Procurar HomeFragment na pilha de fragments
-            for (fragment in supportFragmentManager.fragments) {
-                if (fragment is HomeFragment && fragment.isAdded) {
-                    fragment.onLoginSuccess()
-                    break
-                }
-            }
-        } else {
-            // Se o fragment atual já é HomeFragment, chamar diretamente
-            currentFragment.onLoginSuccess()
-        }
+
+    // Método para os Fragments controlarem o estado do refresh
+    fun setRefreshing(refreshing: Boolean) {
+        swipeRefreshLayout.isRefreshing = refreshing
     }
+
+    override fun onLoginSuccess() {
+        (supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as? HomeFragment)?.onLoginSuccess()
+    }
+
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // Processar imediatamente se o layout estiver pronto
-        if (isLayoutReady) {
-            handleIntent(intent)
-        }
+        if (isLayoutReady) handleIntent(intent)
     }
+
     private fun handleIntent(intent: Intent?) {
         val destination = intent?.getStringExtra("destination") ?: run {
-            // Se não há destino, e ainda não há fragmento, abrir a tela inicial
-            if (currentFragment == null) {
-                openFragment(R.id.navigation_home)
-            }
+            if (currentFragment == null) openFragment(R.id.navigation_home)
             return
         }
         Log.d(TAG, "Handling intent with destination: $destination")
@@ -122,8 +133,13 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             "provas" -> openFragment(R.id.option_calendario_provas)
         }
     }
+
     private fun openFragment(fragmentId: Int) {
         if (isFinishing || isDestroyed) return
+
+        // Reseta estado do refresh ao trocar de fragment
+        swipeRefreshLayout.isRefreshing = false
+
         Log.d(TAG, "Opening fragment: $fragmentId")
         val fragment = when (fragmentId) {
             R.id.navigation_home -> HomeFragment()
@@ -131,7 +147,7 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             R.id.navigation_notas -> NotasFragment()
             R.id.option_horarios_aula -> HorariosAula()
             R.id.action_profile -> ProfileFragment()
-            R.id.navigation_more -> MoreFragment() // Adicionado para o novo fragment
+            R.id.navigation_more -> MoreFragment()
             else -> return
         }
         currentFragment = fragment
@@ -142,53 +158,41 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             .commit()
         updateMenuSelection(fragmentId)
     }
+
     private fun updateMenuSelection(fragmentId: Int) {
         if (isUpdatingSelection) return
-        Log.d(TAG, "Updating menu selection to: $fragmentId")
         isUpdatingSelection = true
         runOnUiThread {
             try {
                 if (resources.getBoolean(R.bool.isTablet)) {
-                    if (navRail.selectedItemId != fragmentId) {
-                        navRail.selectedItemId = fragmentId
-                    }
+                    if (navRail.selectedItemId != fragmentId) navRail.selectedItemId = fragmentId
                 } else {
-                    if (bottomNav.selectedItemId != fragmentId) {
-                        bottomNav.selectedItemId = fragmentId
-                    }
+                    if (bottomNav.selectedItemId != fragmentId) bottomNav.selectedItemId = fragmentId
                 }
             } finally {
                 isUpdatingSelection = false
             }
         }
     }
+
     private fun configureNavigationForDevice() {
         val isTablet = resources.getBoolean(R.bool.isTablet)
         if (isTablet) {
             bottomNav.visibility = View.GONE
             navRail.visibility = View.VISIBLE
-            // Configurar o listener
             navRail.setOnItemSelectedListener { item ->
-                if (isUpdatingSelection) return@setOnItemSelectedListener true
-                openFragment(item.itemId)
+                if (!isUpdatingSelection) openFragment(item.itemId)
                 true
             }
-            // Definir item inicial selecionado apenas visualmente
-            if (currentFragmentId == View.NO_ID) {
-                navRail.selectedItemId = R.id.navigation_home
-            }
+            if (currentFragmentId == View.NO_ID) navRail.selectedItemId = R.id.navigation_home
         } else {
             navRail.visibility = View.GONE
             bottomNav.visibility = View.VISIBLE
             bottomNav.setOnItemSelectedListener { item ->
-                if (isUpdatingSelection) return@setOnItemSelectedListener true
-                openFragment(item.itemId)
+                if (!isUpdatingSelection) openFragment(item.itemId)
                 true
             }
-            // Definir item inicial selecionado apenas visualmente
-            if (currentFragmentId == View.NO_ID) {
-                bottomNav.selectedItemId = R.id.navigation_home
-            }
+            if (currentFragmentId == View.NO_ID) bottomNav.selectedItemId = R.id.navigation_home
             val rootView: View = findViewById(R.id.main)
             rootView.viewTreeObserver.addOnGlobalLayoutListener {
                 val r = Rect()
@@ -199,6 +203,7 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             }
         }
     }
+
     private fun iniciarUpdateWorker() {
         val updateWork = PeriodicWorkRequest.Builder(
             UpdateCheckWorker::class.java,
@@ -211,6 +216,7 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             updateWork
         )
     }
+
     @SuppressLint("ObsoleteSdkInt")
     private fun configureSystemBarsForLegacyDevices() {
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
@@ -273,6 +279,7 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             }
         }
     }
+
     private fun solicitarPermissaoNotificacao() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -288,6 +295,7 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             }
         }
     }
+
     private fun iniciarNotasWorker() {
         val notasWork = PeriodicWorkRequest.Builder(
             NotasWorker::class.java,
@@ -300,6 +308,7 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             notasWork
         )
     }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -307,20 +316,26 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
+
     fun openCustomFragment(fragment: Fragment) {
+        // Reseta estado do refresh
+        swipeRefreshLayout.isRefreshing = false
+
         currentFragment = fragment
         currentFragmentId = View.NO_ID
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(R.id.nav_host_fragment, fragment)
-            .addToBackStack(null) // Adicionar à pilha para voltar
+            .addToBackStack(null)
             .commit()
         updateMenuSelection(View.NO_ID)
     }
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.top_app_bar_menu, menu)
         return true
     }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_settings -> {
@@ -334,6 +349,7 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             else -> super.onOptionsItemSelected(item)
         }
     }
+
     fun abrirDetalhesProva(url: String) {
         val fragment = DetalhesProvaFragment.newInstance(url)
         supportFragmentManager.beginTransaction()
@@ -342,6 +358,7 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             .addToBackStack(null)
             .commit()
     }
+
     fun navigateToHome() {
         openFragment(R.id.navigation_home)
     }
