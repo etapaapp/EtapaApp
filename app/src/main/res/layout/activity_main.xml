@@ -19,7 +19,7 @@
         app:title="Colégio Etapa"
         app:menu="@menu/top_app_bar_menu" />
 
-    <!-- Conteúdo principal -->
+    <!-- Conteúdo principal com SwipeRefreshLayout -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -43,16 +43,22 @@
                 android:background="@color/fundocartao"
                 tools:ignore="VisualLintBottomNav" />
 
-            <!-- NavHost Fragment (conteúdo principal) -->
-            <androidx.fragment.app.FragmentContainerView
-                android:id="@+id/nav_host_fragment"
-                android:name="androidx.navigation.fragment.NavHostFragment"
+            <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                android:id="@+id/swipeRefreshLayout"
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_weight="1"
-                app:defaultNavHost="true"
-                app:navGraph="@navigation/nav_graph" />
+                app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
+                <androidx.fragment.app.FragmentContainerView
+                    android:id="@+id/nav_host_fragment"
+                    android:name="androidx.navigation.fragment.NavHostFragment"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    app:defaultNavHost="true"
+                    app:navGraph="@navigation/nav_graph" />
+
+            </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
         </LinearLayout>
 
         <!-- Bottom Navigation para celulares -->
@@ -66,6 +72,5 @@
             app:menu="@menu/bottom_nav_menu"
             app:labelVisibilityMode="labeled"
             tools:ignore="VisualLintBottomNav" />
-
     </FrameLayout>
 </LinearLayout>
