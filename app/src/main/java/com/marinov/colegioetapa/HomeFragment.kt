@@ -35,7 +35,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
 
-class HomeFragment : Fragment() {
+class HomeFragment : Fragment(), MainActivity.RefreshableFragment { // Implemente a interface aqui
     private var viewPager: ViewPager2? = null
     private var newsRecyclerView: RecyclerView? = null
     private var layoutSemInternet: LinearLayout? = null
@@ -102,6 +102,50 @@ class HomeFragment : Fragment() {
         setupListeners()
         configureCarouselHeight()
         checkInternetAndLoadData()
+    }
+
+    // Implementação da interface RefreshableFragment
+    override fun onRefresh() {
+        Log.d("HomeFragment", "Pull-to-Refresh acionado")
+        // Lógica de atualização
+        buscarDadosAtualizados()
+    }
+
+    private fun buscarDadosAtualizados() {
+        // Verificar se tem internet
+        if (!hasInternetConnection()) {
+            (requireActivity() as MainActivity).setRefreshing(false)
+            showOfflineState()
+            return
+        }
+
+        // Forçar recarregamento dos dados
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val doc = fetchHomePageData()
+                withContext(Dispatchers.Main) {
+                    if (isFragmentDestroyed) return@withContext
+
+                    if (isValidSession(doc)) {
+                        processPageContent(doc)
+                        saveCache()
+                        setupUI()
+                        // Parar o refresh
+                        (requireActivity() as MainActivity).setRefreshing(false)
+                    } else {
+                        handleInvalidSession()
+                        (requireActivity() as MainActivity).setRefreshing(false)
+                    }
+                }
+            } catch (e: IOException) {
+                withContext(Dispatchers.Main) {
+                    if (!isFragmentDestroyed) {
+                        handleDataFetchError(e)
+                        (requireActivity() as MainActivity).setRefreshing(false)
+                    }
+                }
+            }
+        }
     }
 
     override fun onPause() {
