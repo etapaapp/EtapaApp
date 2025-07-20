@@ -5,6 +5,7 @@ appcompat          = "1.7.1"
 material           = "1.12.0"
 constraintlayout   = "2.2.0"
 navigation         = "2.8.5"
+swiperefreshlayout = "1.1.0"
 webkit             = "1.12.1"
 core-ktx           = "1.16.0"
 junit              = "4.13.2"
@@ -30,6 +31,7 @@ material              = { group = "com.google.android.material",  name = "materi
 constraintlayout      = { group = "androidx.constraintlayout",    name = "constraintlayout",      version.ref = "constraintlayout" }
 navigation-fragment   = { group = "androidx.navigation",         name = "navigation-fragment-ktx", version.ref = "navigation" }
 navigation-ui         = { group = "androidx.navigation",         name = "navigation-ui-ktx",      version.ref = "navigation" }
+swiperefreshlayout = { module = "androidx.swiperefreshlayout:swiperefreshlayout", version.ref = "swiperefreshlayout" }
 webkit                = { group = "androidx.webkit",             name = "webkit",                version.ref = "webkit" }
 core-ktx              = { group = "androidx.core",               name = "core-ktx",             version.ref = "core-ktx" }
 junit                 = { group = "junit",                       name = "junit",                version.ref = "junit" }
