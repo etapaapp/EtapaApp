@@ -26,13 +26,13 @@ import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
-class HorariosAula : Fragment() {
+class HorariosAula : Fragment(), MainActivity.RefreshableFragment { // Implemente a interface
 
     private companion object {
         const val URL_HORARIOS = "https://areaexclusiva.colegioetapa.com.br/horarios/aulas"
         const val PREFS = "horarios_prefs"
         const val KEY_HTML = "cache_html_horarios"
-        const val KEY_ALERT = "cache_alert_message" // Nova chave para mensagem
+        const val KEY_ALERT = "cache_alert_message"
         const val ALERT_SELECTOR = "div.alert.alert-info.alert-font.text-center.m-0"
         const val TABLE_SELECTOR = "#page-content-wrapper > div.d-lg-flex > div.container-fluid.p-3 > " +
                 "div.card.bg-transparent.border-0 > div.card-body.px-0.px-md-3 > " +
@@ -45,6 +45,7 @@ class HorariosAula : Fragment() {
     private lateinit var tvMessage: TextView
     private lateinit var scrollContainer: androidx.core.widget.NestedScrollView
     private lateinit var cache: CacheHelper
+    private var isRefreshing = false // Controle do estado de refresh
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -79,6 +80,13 @@ class HorariosAula : Fragment() {
         }
 
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, callback)
+    }
+
+    // Implementação do Pull-to-Refresh
+    override fun onRefresh() {
+        Log.d("HorariosAula", "Pull-to-Refresh acionado")
+        isRefreshing = true
+        fetchHorarios()
     }
 
     private fun fetchHorarios() {
@@ -136,6 +144,12 @@ class HorariosAula : Fragment() {
                 Log.e("HorariosAula", "Erro inesperado", e)
                 showOfflineBar()
                 loadCachedData()
+            } finally {
+                // Parar o indicador de refresh se estivermos atualizando
+                if (isRefreshing) {
+                    (activity as? MainActivity)?.setRefreshing(false)
+                    isRefreshing = false
+                }
             }
         }
     }
@@ -145,6 +159,7 @@ class HorariosAula : Fragment() {
         val alertMessage = cache.loadAlertMessage()
         if (!alertMessage.isNullOrEmpty()) {
             showNoClassesMessage(alertMessage)
+            stopRefreshIfNeeded()
             return
         }
 
@@ -159,6 +174,15 @@ class HorariosAula : Fragment() {
             } catch (e: Exception) {
                 Log.e("HorariosAula", "Erro ao processar cache", e)
             }
+        }
+
+        stopRefreshIfNeeded()
+    }
+
+    private fun stopRefreshIfNeeded() {
+        if (isRefreshing) {
+            (activity as? MainActivity)?.setRefreshing(false)
+            isRefreshing = false
         }
     }
 
