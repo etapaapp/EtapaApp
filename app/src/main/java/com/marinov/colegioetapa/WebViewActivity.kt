@@ -44,10 +44,10 @@ class WebViewActivity : AppCompatActivity() {
         hideSystemBars()
 
         webView = findViewById(R.id.webview)
-        
+
         // Criar container para fullscreen
         fullscreenContainer = FrameLayout(this)
-        
+
         setupWebView()
         setupDownloadListener()
         setupBackPressHandler()
@@ -66,7 +66,7 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.allowContentAccess = true
         webView.settings.loadWithOverviewMode = true
         webView.settings.useWideViewPort = true
-        
+
         // Configurações importantes para vídeo
         webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         webView.settings.javaScriptCanOpenWindowsAutomatically = true
@@ -89,7 +89,7 @@ class WebViewActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 ))
-                
+
                 fullscreenContainer.addView(view, FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -133,7 +133,7 @@ class WebViewActivity : AppCompatActivity() {
                 return null
             }
         }
-        
+
         // Atribuir o WebChromeClient ao WebView
         webView.webChromeClient = webChromeClient
 
@@ -216,7 +216,7 @@ class WebViewActivity : AppCompatActivity() {
                     webChromeClient?.onHideCustomView()
                     return
                 }
-                
+
                 // Se pode voltar no WebView
                 if (webView.canGoBack()) {
                     webView.goBack()
@@ -245,17 +245,17 @@ class WebViewActivity : AppCompatActivity() {
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-        
+
         // Para compatibilidade com versões mais antigas
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-        )
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                )
     }
 
     override fun onDestroy() {
