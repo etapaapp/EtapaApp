@@ -36,6 +36,7 @@ import org.jsoup.nodes.Document
 import java.io.IOException
 
 class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
+
     private var viewPager: ViewPager2? = null
     private var newsRecyclerView: RecyclerView? = null
     private var layoutSemInternet: LinearLayout? = null
@@ -107,41 +108,37 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     // Implementação da interface RefreshableFragment
     override fun onRefresh() {
         Log.d("HomeFragment", "Pull-to-Refresh acionado")
-        // Lógica de atualização
+        // Nova abordagem: sempre tentar recarregar, mesmo no estado offline
         buscarDadosAtualizados()
     }
 
     private fun buscarDadosAtualizados() {
-        // Mostrar estado de loading (mas não o loadingContainer completo, apenas o refresh)
-        // Como o SwipeRefreshLayout já mostra o indicador, não precisamos mudar a interface aqui.
-        // Forçar recarregamento dos dados
+        // Forçar recarregamento dos dados independente do estado atual
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val doc = fetchHomePageData()
                 withContext(Dispatchers.Main) {
                     if (isFragmentDestroyed) return@withContext
+
                     if (isValidSession(doc)) {
                         processPageContent(doc)
                         saveCache()
                         setupUI()
-                        // Mostrar conteúdo (caso esteja no estado offline, será substituído)
+                        // Mostrar conteúdo (pode estar substituindo o estado offline)
                         showContentState()
+                        isDataLoaded = true
                     } else {
                         handleInvalidSession()
                     }
                     // Parar o refresh
                     (requireActivity() as MainActivity).setRefreshing(false)
                 }
-            } catch (_: IOException) {
+            } catch (e: IOException) {
                 withContext(Dispatchers.Main) {
                     if (!isFragmentDestroyed) {
-                        // Se falhar, verificar se temos dados em cache para mostrar
-                        if (isDataLoaded) {
-                            // Se já tínhamos dados carregados, permanecemos no estado de conteúdo
-                            // Mas mostramos uma mensagem de erro? Ou confiamos que os dados atuais são válidos?
-                            // Vamos apenas parar o refresh e manter a tela atual.
-                        } else {
-                            // Se não tínhamos dados, mostrar estado offline
+                        Log.e("HomeFragment", "Erro ao buscar dados: ${e.message}")
+                        // Se não temos dados carregados, mostramos o estado offline
+                        if (!isDataLoaded) {
                             showOfflineState()
                         }
                         (requireActivity() as MainActivity).setRefreshing(false)
