@@ -45,7 +45,6 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
 
         // Lista de fragments que suportam pull-to-refresh
         private val REFRESHABLE_FRAGMENTS = setOf(
-            R.id.navigation_home,
             R.id.navigation_notas,
             R.id.option_horarios_aula,
             R.id.action_profile,
