@@ -261,7 +261,7 @@ class NotasFragment : Fragment(), MainActivity.RefreshableFragment { // Implemen
                 parseAndBuildTable(table)
             }
         }
-        
+
         // Se estava atualizando, parar o refresh
         if (isRefreshing) {
             (activity as? MainActivity)?.setRefreshing(false)

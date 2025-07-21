@@ -42,12 +42,22 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
     companion object {
         private const val REQUEST_NOTIFICATION_PERMISSION = 100
         private const val TAG = "MainActivity"
+
+        // Lista de fragments que suportam pull-to-refresh
+        private val REFRESHABLE_FRAGMENTS = setOf(
+            R.id.navigation_home,
+            R.id.navigation_notas,
+            R.id.option_horarios_aula,
+            R.id.action_profile,
+            R.id.navigation_more
+            // WebViewFragment não tem ID específico pois é aberto via openCustomFragment
+        )
     }
 
     private var currentFragment: Fragment? = null
     private lateinit var bottomNav: BottomNavigationView
     private lateinit var navRail: NavigationRailView
-    private lateinit var swipeRefreshLayout: SwipeRefreshLayout // Novo componente
+    private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private var isLayoutReady = false
     private var currentFragmentId = View.NO_ID
     private var isUpdatingSelection = false
@@ -67,7 +77,11 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
 
         // Configuração do Pull-to-Refresh
         swipeRefreshLayout.setOnRefreshListener {
-            (currentFragment as? RefreshableFragment)?.onRefresh() ?: run {
+            if (isRefreshEnabled()) {
+                (currentFragment as? RefreshableFragment)?.onRefresh() ?: run {
+                    swipeRefreshLayout.isRefreshing = false
+                }
+            } else {
                 swipeRefreshLayout.isRefreshing = false
             }
         }
@@ -106,9 +120,31 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
         iniciarUpdateWorker()
     }
 
+    // Verifica se o fragment atual deve ter pull-to-refresh habilitado
+    private fun isRefreshEnabled(): Boolean {
+        return when {
+            // Se é um fragment customizado (como WebViewFragment), verifica se implementa RefreshableFragment
+            currentFragmentId == View.NO_ID -> currentFragment is RefreshableFragment
+            // Se é um fragment padrão, verifica se está na lista de refreshable
+            else -> REFRESHABLE_FRAGMENTS.contains(currentFragmentId)
+        }
+    }
+
+    // Atualiza o estado do SwipeRefreshLayout baseado no fragment atual
+    private fun updateRefreshLayoutState() {
+        swipeRefreshLayout.isEnabled = isRefreshEnabled()
+        if (!isRefreshEnabled()) {
+            swipeRefreshLayout.isRefreshing = false
+        }
+    }
+
     // Método para os Fragments controlarem o estado do refresh
     fun setRefreshing(refreshing: Boolean) {
-        swipeRefreshLayout.isRefreshing = refreshing
+        if (isRefreshEnabled()) {
+            swipeRefreshLayout.isRefreshing = refreshing
+        } else {
+            swipeRefreshLayout.isRefreshing = false
+        }
     }
 
     override fun onLoginSuccess() {
@@ -152,11 +188,16 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
         }
         currentFragment = fragment
         currentFragmentId = fragmentId
+
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(R.id.nav_host_fragment, fragment)
             .commit()
+
         updateMenuSelection(fragmentId)
+
+        // Atualiza o estado do pull-to-refresh após trocar de fragment
+        updateRefreshLayoutState()
     }
 
     private fun updateMenuSelection(fragmentId: Int) {
@@ -323,12 +364,17 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
 
         currentFragment = fragment
         currentFragmentId = View.NO_ID
+
         supportFragmentManager.beginTransaction()
             .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
             .replace(R.id.nav_host_fragment, fragment)
             .addToBackStack(null)
             .commit()
+
         updateMenuSelection(View.NO_ID)
+
+        // Atualiza o estado do pull-to-refresh após trocar de fragment
+        updateRefreshLayoutState()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

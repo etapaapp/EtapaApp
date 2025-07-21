@@ -34,7 +34,7 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-class MoreFragment : Fragment() {
+class MoreFragment : Fragment(), MainActivity.RefreshableFragment { // 1. Implemente a interface
 
     private lateinit var ivProfilePhoto: ImageView
     private lateinit var tvStudentName: TextView
@@ -46,6 +46,9 @@ class MoreFragment : Fragment() {
 
     private lateinit var sharedPreferences: SharedPreferences
     private val AUTH_CHECK_URL = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
+
+    // 2. Variável de controle para refresh
+    private var isRefreshing = false
 
     private companion object {
         private const val PROFILE_PREFS = "profile_preferences"
@@ -72,7 +75,6 @@ class MoreFragment : Fragment() {
         loadProfileData()
         loadProfileImage()
 
-        // Configuração do botão voltar
         requireActivity().onBackPressedDispatcher.addCallback(
             viewLifecycleOwner,
             object : OnBackPressedCallback(true) {
@@ -82,13 +84,27 @@ class MoreFragment : Fragment() {
             }
         )
 
-        // Inicializar WebView
         webView = view.findViewById(R.id.webView)
         val webSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
 
         checkInternetAndAuthentication()
+    }
+
+    // 3. Implementação do Pull-to-Refresh
+    override fun onRefresh() {
+        Log.d("MoreFragment", "Pull-to-Refresh acionado")
+        isRefreshing = true
+        checkInternetAndAuthentication()
+    }
+
+    // 4. Método para parar o refresh
+    private fun stopRefreshing() {
+        if (isRefreshing) {
+            (activity as? MainActivity)?.setRefreshing(false)
+            isRefreshing = false
+        }
     }
 
     private fun initViews(view: View) {
@@ -173,12 +189,13 @@ class MoreFragment : Fragment() {
 
     private fun checkInternetAndAuthentication() {
         if (!hasInternetConnection()) {
-            // Já temos dados offline? Exibe-os
             if (hasOfflineProfileData()) {
                 showContent()
             } else {
                 showError()
             }
+            // 5. Parar refresh se offline
+            stopRefreshing()
             return
         }
 
@@ -251,8 +268,11 @@ class MoreFragment : Fragment() {
         } else {
             showError()
         }
+        // 5. Parar refresh ao carregar dados offline
+        stopRefreshing()
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
     private fun loadProfilePage() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
@@ -392,6 +412,9 @@ class MoreFragment : Fragment() {
         } catch (e: Exception) {
             Log.e("MoreFragment", "Erro no parsing: $rawResult", e)
             loadOfflineProfileData()
+        } finally {
+            // 5. Parar refresh após processar os dados
+            stopRefreshing()
         }
     }
 
@@ -452,7 +475,6 @@ class MoreFragment : Fragment() {
     }
 
     private fun loadProfileImage() {
-        // Tenta carregar a imagem salva localmente
         val savedImagePath = sharedPreferences.getString(PROFILE_IMAGE_KEY, null)
         if (savedImagePath != null) {
             val file = File(savedImagePath)
@@ -463,14 +485,12 @@ class MoreFragment : Fragment() {
             }
         }
 
-        // Se não houver imagem salva, inicia o processo de carregamento
         fetchProfileImage()
     }
 
     private fun fetchProfileImage() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // Obtém os cookies do WebView
                 val cookieManager = CookieManager.getInstance()
                 val cookies = cookieManager.getCookie("https://areaexclusiva.colegioetapa.com.br") ?: ""
 
@@ -479,31 +499,25 @@ class MoreFragment : Fragment() {
                     return@launch
                 }
 
-                // Faz o scraping da página de perfil
                 val doc = Jsoup.connect("https://areaexclusiva.colegioetapa.com.br/profile")
                     .header("Cookie", cookies)
                     .get()
 
-                // Encontra a imagem do perfil
                 val imgElement = doc.selectFirst("div.d-flex.justify-content-center img.rounded-circle")
                 val imgUrl = imgElement?.attr("src") ?: ""
 
                 if (imgUrl.isNotEmpty()) {
                     Log.d("MoreFragment", "Imagem encontrada: $imgUrl")
 
-                    // Baixa a imagem
                     val bitmap = downloadImage(imgUrl, cookies)
 
                     if (bitmap != null) {
-                        // Salva a imagem localmente
                         val savedPath = saveImageToCache(bitmap)
 
-                        // Atualiza a UI
                         withContext(Dispatchers.Main) {
                             ivProfilePhoto.setImageBitmap(bitmap)
                         }
 
-                        // Salva o caminho da imagem nas preferências
                         sharedPreferences.edit { putString(PROFILE_IMAGE_KEY, savedPath)}
                     }
                 }
