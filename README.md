@@ -2,7 +2,7 @@
 
 <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/src/main/ic_launcher-playstore.png" width="200"/> 
 
-Meu cliente alternativo para acessar https://areaexclusiva.colegioetapa.com.br/ em dispositivos Android, com funcionalidades extras ao aplicativo original.
+Meu cliente alternativo para acessar https://areaexclusiva.colegioetapa.com.br/ , com funcionalidades extras ao aplicativo original.
 
 <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/tablet_1.png" width="300"/> <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/tablet_2.png" width="300"/> 
 <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/tablet_3.png" width="300"/> <img src="https://github.com/etapaapp/EtapaApp/blob/master/app/imagens/tablet_4.png" width="300"/>
@@ -36,11 +36,22 @@ Meu cliente alternativo para acessar https://areaexclusiva.colegioetapa.com.br/ 
 Bom proveito!
 
 # Como instalar? #
-Requisitos mínimos:
-1. Android 7.0 ou superior (o suporte para Android 6.0 ou inferior foi removido pois é impossível fazer login);
-2. Android System Webview na versão mais recente possível.
+Android:
 
-Baixe o apk aqui (baixe a versão mais recente disponível, identificada em verde com "Latest"): https://github.com/etapaapp/EtapaApp/releases
+    Requisitos mínimos:
+      1. Android 7.0 ou superior (o suporte para Android 6.0 ou inferior foi removido pois é impossível fazer login);
+      2. Android System Webview na versão mais recente possível.
+
+  Baixe o apk aqui (baixe a versão mais recente disponível, identificada em verde com "Latest"): https://github.com/etapaapp/EtapaApp/releases
+
+Windows:
+
+    Requisitos mínimos:
+      1. Windows 10 1809 ou superior;
+      2. EdgeWebiew.
+  Baixe a última versão aqui: https://github.com/etapaapp/EtapaAppforWindows/blob/master/README.md
+  
+  Tutorial de instalação aqui: https://github.com/etapaapp/EtapaAppforWindows/releases
 
 # Algumas observações! #
 
