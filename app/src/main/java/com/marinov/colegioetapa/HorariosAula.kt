@@ -107,28 +107,52 @@ class HorariosAula : Fragment(), MainActivity.RefreshableFragment { // Implement
                 }
 
                 if (doc != null) {
-                    // 1. Verificar se há mensagem de "Não há aulas"
-                    val alert = doc.selectFirst(ALERT_SELECTOR)
-                    if (alert != null) {
-                        // Salva a mensagem no cache
-                        cache.saveAlertMessage(alert.text())
-                        showNoClassesMessage(alert.text())
-                        hideOfflineBar()
-                    } else {
-                        // 2. Buscar tabela como no código original
-                        val table = doc.selectFirst(TABLE_SELECTOR)
+                    // MUDANÇA PRINCIPAL: Verificar PRIMEIRO se há tabela, depois mensagem
+                    val table = doc.selectFirst(TABLE_SELECTOR)
 
-                        if (table != null) {
-                            // Salva a tabela no cache (formato original)
+                    if (table != null) {
+                        // Verificar se a tabela tem conteúdo útil (mais que só cabeçalho)
+                        val dataRows = table.select("tbody > tr").filter { row ->
+                            // Filtrar linhas que não são apenas alertas
+                            !row.select("div.alert-info").any() || row.select("td.table-field").any { cell ->
+                                val text = cell.text().trim()
+                                text != "-" && !text.contains("Intervalo", ignoreCase = true) &&
+                                        !text.contains("não há aulas", ignoreCase = true)
+                            }
+                        }
+
+                        if (dataRows.isNotEmpty()) {
+                            // Há uma tabela com dados válidos - priorizar ela
                             cache.saveHtml(table.outerHtml())
+                            cache.clearAlertMessage() // Limpar mensagem de alerta do cache
                             parseAndBuildTable(table)
+                            hideOfflineBar()
+                        } else {
+                            // Tabela existe mas só tem intervalos/mensagens - verificar alerta
+                            val alert = doc.selectFirst(ALERT_SELECTOR)
+                            if (alert != null) {
+                                cache.saveAlertMessage(alert.text())
+                                cache.clearHtml() // Limpar tabela do cache
+                                showNoClassesMessage(alert.text())
+                                hideOfflineBar()
+                            } else {
+                                // Caso raro: tabela vazia e sem alerta
+                                showOfflineBar()
+                                loadCachedData()
+                            }
+                        }
+                    } else {
+                        // Não há tabela - verificar se há mensagem de alerta
+                        val alert = doc.selectFirst(ALERT_SELECTOR)
+                        if (alert != null) {
+                            cache.saveAlertMessage(alert.text())
+                            cache.clearHtml() // Limpar tabela do cache
+                            showNoClassesMessage(alert.text())
                             hideOfflineBar()
                         } else {
                             // Elementos não encontrados (usuário deslogado)
                             showOfflineBar()
                             Log.e("HorariosAula", "Elementos não encontrados no site")
-
-                            // Tenta carregar cache
                             loadCachedData()
                         }
                     }
@@ -136,8 +160,6 @@ class HorariosAula : Fragment(), MainActivity.RefreshableFragment { // Implement
                     // Sem conexão com a internet
                     showOfflineBar()
                     Log.e("HorariosAula", "Falha na conexão")
-
-                    // Tenta carregar cache offline
                     loadCachedData()
                 }
             } catch (e: Exception) {
@@ -155,25 +177,28 @@ class HorariosAula : Fragment(), MainActivity.RefreshableFragment { // Implement
     }
 
     private fun loadCachedData() {
-        // 1. Tentar carregar mensagem de alerta do cache
-        val alertMessage = cache.loadAlertMessage()
-        if (!alertMessage.isNullOrEmpty()) {
-            showNoClassesMessage(alertMessage)
-            stopRefreshIfNeeded()
-            return
-        }
-
-        // 2. Tentar carregar tabela do cache (formato antigo)
+        // MUDANÇA: Priorizar tabela no cache, depois mensagem
+        // 1. Tentar carregar tabela do cache primeiro
         val html = cache.loadHtml()
         if (html != null) {
             try {
                 val table = Jsoup.parse(html).selectFirst("table")
                 if (table != null) {
                     parseAndBuildTable(table)
+                    stopRefreshIfNeeded()
+                    return
                 }
             } catch (e: Exception) {
-                Log.e("HorariosAula", "Erro ao processar cache", e)
+                Log.e("HorariosAula", "Erro ao processar cache da tabela", e)
             }
+        }
+
+        // 2. Se não há tabela, tentar carregar mensagem de alerta do cache
+        val alertMessage = cache.loadAlertMessage()
+        if (!alertMessage.isNullOrEmpty()) {
+            showNoClassesMessage(alertMessage)
+            stopRefreshIfNeeded()
+            return
         }
 
         stopRefreshIfNeeded()
@@ -211,7 +236,7 @@ class HorariosAula : Fragment(), MainActivity.RefreshableFragment { // Implement
         // Linhas de dados
         val rows = table.select("tbody > tr")
         for (tr in rows) {
-            // Ignorar linhas com alerta de intervalo
+            // Ignorar linhas com alerta de intervalo que são apenas informativas
             if (tr.select("div.alert-info").isNotEmpty()) continue
 
             val row = TableRow(requireContext())
@@ -286,6 +311,16 @@ class HorariosAula : Fragment(), MainActivity.RefreshableFragment { // Implement
         // Salva mensagem em uma chave separada
         fun saveAlertMessage(message: String) {
             prefs.edit { putString(KEY_ALERT, message) }
+        }
+
+        // NOVO: Limpar cache da tabela
+        fun clearHtml() {
+            prefs.edit { remove(KEY_HTML) }
+        }
+
+        // NOVO: Limpar cache da mensagem
+        fun clearAlertMessage() {
+            prefs.edit { remove(KEY_ALERT) }
         }
 
         fun loadHtml(): String? {

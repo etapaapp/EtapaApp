@@ -192,6 +192,8 @@ class SettingsActivity : AppCompatActivity() {
             "redacao_semanal_prefs",
             "cache_html_redacao_semanal",
             "detalhes_prefs",
+            "cache_html_horarios",
+            "cache_alert_message",
             "cache_html_detalhes",
             "profile_preferences",
             "cache_html_provas"
