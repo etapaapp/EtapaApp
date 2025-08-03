@@ -49,9 +49,9 @@ Windows:
     Requisitos mínimos:
       1. Windows 10 1809 ou superior;
       2. EdgeWebiew.
-  Baixe a última versão aqui: https://github.com/etapaapp/EtapaAppforWindows/blob/master/README.md
+  Baixe a última versão aqui: https://github.com/etapaapp/EtapaAppforWindows/releases
   
-  Tutorial de instalação aqui: https://github.com/etapaapp/EtapaAppforWindows/releases
+  Tutorial de instalação aqui: https://github.com/etapaapp/EtapaAppforWindows/blob/master/README.md
   
 # Algumas observações! #
 
