@@ -52,7 +52,7 @@ Windows:
   Baixe a última versão aqui: https://github.com/etapaapp/EtapaAppforWindows/blob/master/README.md
   
   Tutorial de instalação aqui: https://github.com/etapaapp/EtapaAppforWindows/releases
-
+  
 # Algumas observações! #
 
 1. Todo o conteúdo desse app pertence ao Etapa, e o app só funciona após autenticar no sistema.
