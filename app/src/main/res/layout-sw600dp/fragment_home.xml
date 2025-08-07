@@ -51,7 +51,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
-            <!-- Coluna centralizada horizontalmente e limitada a 700dp -->
+            <!-- Coluna centralizada horizontalmente e limitada -->
             <LinearLayout
                 android:id="@+id/centralColumn"
                 android:layout_width="0dp"
@@ -102,12 +102,16 @@
                 </androidx.cardview.widget.CardView>
 
                 <!-- Seção de Notícias -->
+                <!-- MODIFICADO: Adicionado ID e visibilidade inicial 'gone' -->
                 <LinearLayout
+                    android:id="@+id/newsSectionContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:layout_marginTop="24dp"
-                    android:padding="8dp">
+                    android:padding="8dp"
+                    android:visibility="gone"
+                    tools:visibility="visible">
 
                     <TextView
                         android:layout_width="match_parent"

@@ -12,7 +12,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "25.1"
+        versionName = "25.3"
         buildConfigField("String", "EAD_URL", "\"${project.properties["EAD_URL"]}\"")
         buildConfigField("String", "GITHUB_PAT", "\"${project.properties["GITHUB_PAT"]}\"")
     }
@@ -61,4 +61,5 @@ dependencies {
     implementation (libs.guava)
     implementation (libs.glide)
     annotationProcessor (libs.compiler)
+    implementation (libs.swiperefreshlayout)
 }

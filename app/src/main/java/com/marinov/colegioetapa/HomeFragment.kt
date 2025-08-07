@@ -45,6 +45,8 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private var contentContainer: View? = null
     private var txtStuckHint: TextView? = null
     private var carouselLoadingIndicator: CircularProgressIndicator? = null
+    // NOVO: Referência para o container da seção de notícias
+    private var newsSectionContainer: View? = null
 
     private var shouldBlockNavigation = false
     private var isFragmentDestroyed = false
@@ -57,7 +59,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     private val handler = Handler(Looper.getMainLooper())
 
-    // Constantes para proporção das imagens do carrossel (800x300 = 8:3)
+    // Constantes
     private companion object {
         const val PREFS_NAME = "HomeFragmentCache"
         const val KEY_CAROUSEL_ITEMS = "carousel_items"
@@ -76,14 +78,10 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         }
     }
 
-    // Função para ser chamada pela Activity quando login for bem-sucedido
     fun onLoginSuccess() {
         Log.d("HomeFragment", "Login bem-sucedido - forçando recarregamento")
-        // Limpar cache para garantir dados frescos
         clearCache()
-        // Resetar estado
         isDataLoaded = false
-        // Forçar recarregamento
         checkInternetAndLoadData()
     }
 
@@ -105,15 +103,12 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         checkInternetAndLoadData()
     }
 
-    // Implementação da interface RefreshableFragment
     override fun onRefresh() {
         Log.d("HomeFragment", "Pull-to-Refresh acionado")
-        // Nova abordagem: sempre tentar recarregar, mesmo no estado offline
         buscarDadosAtualizados()
     }
 
     private fun buscarDadosAtualizados() {
-        // Forçar recarregamento dos dados independente do estado atual
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val doc = fetchHomePageData()
@@ -124,20 +119,17 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
                         processPageContent(doc)
                         saveCache()
                         setupUI()
-                        // Mostrar conteúdo (pode estar substituindo o estado offline)
                         showContentState()
                         isDataLoaded = true
                     } else {
                         handleInvalidSession()
                     }
-                    // Parar o refresh
                     (requireActivity() as MainActivity).setRefreshing(false)
                 }
             } catch (e: IOException) {
                 withContext(Dispatchers.Main) {
                     if (!isFragmentDestroyed) {
                         Log.e("HomeFragment", "Erro ao buscar dados: ${e.message}")
-                        // Se não temos dados carregados, mostramos o estado offline
                         if (!isDataLoaded) {
                             showOfflineState()
                         }
@@ -156,8 +148,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     override fun onResume() {
         super.onResume()
         shouldBlockNavigation = false
-
-        // Se o fragment já foi visível antes, verifica se precisa recarregar
         if (hasBeenVisible && !isDataLoaded) {
             Log.d("HomeFragment", "Retornando do WebView - verificando necessidade de recarregamento")
             checkInternetAndLoadData()
@@ -167,9 +157,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Reconfigurar altura do carrossel na mudança de orientação
         configureCarouselHeight()
-        // Forçar recriação do adapter para aplicar nova altura
         if (carouselItems.isNotEmpty()) {
             setupCarouselWithLoading()
         }
@@ -190,6 +178,8 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         newsRecyclerView = view.findViewById(R.id.newsRecyclerView)
         txtStuckHint = view.findViewById(R.id.txtStuckHint)
         carouselLoadingIndicator = view.findViewById(R.id.carouselLoadingIndicator)
+        // NOVO: Inicializando a referência do container de notícias
+        newsSectionContainer = view.findViewById(R.id.newsSectionContainer)
     }
 
     private fun setupRecyclerView() {
@@ -211,36 +201,25 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         val viewPager = this.viewPager ?: return
         val context = context ?: return
 
-        // Verificar se é tablet - se for, manter comportamento atual
         val isTablet = resources.configuration.screenWidthDp >= 600
         if (isTablet) {
-            // Para tablet, não fazer nada - a altura já está definida no XML
             return
         }
 
-        // Para celular, usar regra de 3 baseada nas dimensões originais 800x300
         val screenWidth = resources.displayMetrics.widthPixels
         val horizontalPadding = resources.getDimensionPixelSize(R.dimen.carousel_margin) * 2 +
                 context.resources.getDimensionPixelSize(R.dimen.activity_horizontal_margin)
-
         val availableWidth = screenWidth - horizontalPadding
-
-        // Regra de 3: 800px -> 300px | availableWidth -> altura
-        // altura = (availableWidth * 300) / 800
         val calculatedHeight = (availableWidth * 300) / 800
-
-        // Limites para celular
         val minHeight = resources.getDimensionPixelSize(R.dimen.carousel_min_height)
         val maxHeight = resources.getDimensionPixelSize(R.dimen.carousel_max_height)
         val finalHeight = calculatedHeight.coerceIn(minHeight, maxHeight)
 
-        // Aplicar altura INSTANTANEAMENTE
         val layoutParams = viewPager.layoutParams
         layoutParams.height = finalHeight
         layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
         viewPager.layoutParams = layoutParams
 
-        // Configurar propriedades do ViewPager
         viewPager.apply {
             clipToPadding = false
             clipChildren = false
@@ -253,25 +232,17 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     private fun checkInternetAndLoadData() {
         if (hasInternetConnection()) {
-            // Se já tem dados carregados, não precisa mostrar loading
             if (!isDataLoaded) {
-                // Primeiro tenta carregar cache
                 val hasCache = loadCache()
-
                 if (hasCache) {
                     showContentState()
                     setupUI()
                     isDataLoaded = true
                 } else {
-                    // Se não tem cache, mostra loading
                     showLoadingState()
                 }
-
-                // Sempre busca dados frescos
                 fetchDataInBackground()
             } else {
-                // Se dados já estão carregados, mas queremos forçar recarregamento
-                // (caso do retorno do login), mostra loading brevemente
                 showLoadingState()
                 fetchDataInBackground()
             }
@@ -284,10 +255,8 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val doc = fetchHomePageData()
-
                 withContext(Dispatchers.Main) {
                     if (isFragmentDestroyed) return@withContext
-
                     if (isValidSession(doc)) {
                         processPageContent(doc)
                         saveCache()
@@ -312,7 +281,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private fun fetchHomePageData(): Document {
         val cookieManager = CookieManager.getInstance()
         val cookies = cookieManager.getCookie(HOME_URL)
-
         return Jsoup.connect(HOME_URL)
             .userAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15")
             .header("Cookie", cookies ?: "")
@@ -349,8 +317,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private fun handleDataFetchError(e: IOException) {
         if (isFragmentDestroyed) return
         Log.e("HomeFragment", "Erro ao buscar dados: ${e.message}")
-
-        // Se não tem dados carregados, vai para login
         if (!isDataLoaded) {
             navigateToWebView(OUT_URL)
         }
@@ -359,7 +325,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private fun saveCache() {
         if (isFragmentDestroyed) return
         val context = context ?: return
-
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit {
             val gson = Gson()
@@ -372,10 +337,8 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private fun loadCache(): Boolean {
         if (isFragmentDestroyed) return false
         val context = context ?: return false
-
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-        // Verifica se o cache não está muito antigo (24 horas)
         val cacheTimestamp = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
         val currentTime = System.currentTimeMillis()
         val cacheAge = currentTime - cacheTimestamp
@@ -397,13 +360,15 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
             val cachedCarousel = gson.fromJson<MutableList<CarouselItem>>(carouselJson, carouselType)
             val cachedNews = gson.fromJson<MutableList<NewsItem>>(newsJson, newsType)
 
-            if (cachedCarousel?.isNotEmpty() == true && cachedNews?.isNotEmpty() == true) {
+            // Alteração aqui: não exigir que notícias existam para carregar cache do carrossel
+            if (cachedCarousel?.isNotEmpty() == true) {
                 carouselItems.clear()
                 carouselItems.addAll(cachedCarousel)
 
                 newsItems.clear()
-                newsItems.addAll(cachedNews)
-
+                if(cachedNews != null) {
+                    newsItems.addAll(cachedNews)
+                }
                 return true
             }
         }
@@ -413,7 +378,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private fun clearCache() {
         if (isFragmentDestroyed) return
         val context = context ?: return
-
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit {
             remove(KEY_CAROUSEL_ITEMS)
@@ -424,42 +388,33 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     private fun processCarousel(doc: Document?, carouselList: MutableList<CarouselItem>) {
         if (doc == null) return
-
         val carousel = doc.getElementById("home_banners_carousel") ?: return
         val items = carousel.select(".carousel-item")
-
         for (item in items) {
             if (isFragmentDestroyed) return
-
             val linkElem = item.selectFirst("a")
             val linkUrl = linkElem?.attr("href") ?: ""
             var imgUrl = item.select("img").attr("src")
-
             if (!imgUrl.startsWith("http")) {
                 imgUrl = "https://www.colegioetapa.com.br$imgUrl"
             }
-
             carouselList.add(CarouselItem(imgUrl, linkUrl))
         }
     }
 
     private fun processNews(doc: Document?, newsList: MutableList<NewsItem>) {
         if (doc == null) return
-
         val newsSection = doc.selectFirst("div.col-12.col-lg-8.mb-5") ?: return
         val cards = newsSection.select(".card.border-radius-card")
         cards.removeAll(newsSection.select("#modal-avisos-importantes .card.border-radius-card"))
-
         for (card in cards) {
             var iconUrl = card.select("img.aviso-icon").attr("src")
             val title = card.select("p.text-blue.aviso-text").text()
             val desc = card.select("p.m-0.aviso-text").text()
             val link = card.select("a[target=_blank]").attr("href")
-
             if (!iconUrl.startsWith("http")) {
                 iconUrl = "https://areaexclusiva.colegioetapa.com.br$iconUrl"
             }
-
             if (!isDuplicateNews(title, newsList)) {
                 newsList.add(NewsItem(iconUrl, title, desc, link))
             }
@@ -472,7 +427,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     private fun navigateToWebView(url: String) {
         if (shouldBlockNavigation || isFragmentDestroyed) return
-
         try {
             val fragment = WebViewFragment().apply {
                 arguments = createArgs(url)
@@ -535,13 +489,9 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private fun hasInternetConnection(): Boolean {
         if (isFragmentDestroyed) return false
         val context = context ?: return false
-
-        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            ?: return false
-
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
         val network = connectivityManager.activeNetwork ?: return false
         val networkCapabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-
         return networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                 networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
@@ -553,19 +503,11 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     private fun setupCarouselWithLoading() {
         if (carouselItems.isEmpty() || isFragmentDestroyed) return
-
         Log.d("HomeFragment", "Configurando carrossel com ${carouselItems.size} itens")
-
-        // Mostrar loading do carrossel
         showCarouselLoading()
-
-        // Garantir que a altura esteja configurada antes de criar o adapter
         configureCarouselHeight()
-
-        // Aguardar 250ms antes de mostrar o carrossel
         handler.postDelayed({
             if (isFragmentDestroyed || !isCarouselLoading) return@postDelayed
-
             setupCarousel()
             hideCarouselLoading()
         }, CAROUSEL_LOADING_DELAY)
@@ -573,48 +515,45 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     private fun setupCarousel() {
         if (carouselItems.isEmpty() || isFragmentDestroyed) return
-
         val viewPager = this.viewPager ?: return
-
-        // Criar e configurar o adapter IMEDIATAMENTE
         val adapter = CarouselAdapter()
         viewPager.adapter = adapter
-
-        // Forçar aplicação instantânea do layout em toda a hierarquia
         viewPager.apply {
             requestLayout()
             invalidate()
-            // Forçar medição e layout imediatos
             measure(
                 View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(layoutParams.height, View.MeasureSpec.EXACTLY)
             )
             layout(left, top, right, top + layoutParams.height)
         }
-
-        // Forçar o container pai também
         val parentView = viewPager.parent as? View
         parentView?.let {
             it.requestLayout()
             it.invalidate()
         }
-
         Log.d("HomeFragment", "Carrossel configurado com altura: ${viewPager.layoutParams.height}px")
     }
 
+    // ATUALIZADO: Lógica para mostrar/ocultar a seção de notícias
     private fun setupNews() {
-        if (newsItems.isEmpty() || isFragmentDestroyed) return
+        if (isFragmentDestroyed) return
 
-        Log.d("HomeFragment", "Configurando notícias com ${newsItems.size} itens")
-
-        // Sempre recria o adapter para garantir que funcione
-        newsRecyclerView?.adapter = NewsAdapter()
+        if (newsItems.isNotEmpty()) {
+            // Se há notícias, mostra o container e configura o adapter
+            Log.d("HomeFragment", "Configurando notícias com ${newsItems.size} itens")
+            newsSectionContainer?.visibility = View.VISIBLE
+            newsRecyclerView?.adapter = NewsAdapter()
+        } else {
+            // Se não há notícias, oculta o container
+            Log.d("HomeFragment", "Nenhuma notícia para exibir. Ocultando a seção.")
+            newsSectionContainer?.visibility = View.GONE
+        }
     }
 
     private inner class CarouselAdapter : RecyclerView.Adapter<CarouselViewHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CarouselViewHolder {
-            val view = LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_carousel, parent, false)
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_carousel, parent, false)
             return CarouselViewHolder(view)
         }
 
@@ -623,24 +562,18 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
             val context = holder.itemView.context
             val isTablet = context.resources.configuration.screenWidthDp >= 600
 
-            // Configurar a ImageView
             holder.imageView.apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 adjustViewBounds = false
-
-                // Garantir que a ImageView ocupe todo o container
                 val layoutParams = this.layoutParams as FrameLayout.LayoutParams
                 layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
                 layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 layoutParams.setMargins(0, 0, 0, 0)
                 this.layoutParams = layoutParams
-
                 setPadding(0, 0, 0, 0)
             }
 
-            // Carregar imagem de forma otimizada
             if (isTablet) {
-                // Para tablet, usar comportamento original
                 val viewPager = this@HomeFragment.viewPager
                 val actualWidth = viewPager?.width ?: context.resources.displayMetrics.widthPixels
                 val actualHeight = viewPager?.height ?: run {
@@ -650,30 +583,14 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
                     val targetWidth = screenWidth - horizontalPadding
                     (targetWidth / CAROUSEL_ASPECT_RATIO).toInt()
                 }
-
-                Glide.with(context)
-                    .load(item.imageUrl)
-                    .centerCrop()
-                    .placeholder(android.R.drawable.ic_menu_gallery)
-                    .error(android.R.drawable.ic_menu_gallery)
-                    .override(actualWidth, actualHeight)
-                    .fitCenter()
-                    .into(holder.imageView)
+                Glide.with(context).load(item.imageUrl).centerCrop().placeholder(android.R.drawable.ic_menu_gallery).error(android.R.drawable.ic_menu_gallery).override(actualWidth, actualHeight).fitCenter().into(holder.imageView)
             } else {
-                // Para celular, usar dimensões fixas conhecidas (800x300) e deixar o Glide otimizar
-                Glide.with(context)
-                    .load(item.imageUrl)
-                    .centerCrop()
-                    .placeholder(android.R.drawable.ic_menu_gallery)
-                    .error(android.R.drawable.ic_menu_gallery)
-                    .override(800, 300) // Dimensões originais da imagem
-                    .into(holder.imageView)
+                Glide.with(context).load(item.imageUrl).centerCrop().placeholder(android.R.drawable.ic_menu_gallery).error(android.R.drawable.ic_menu_gallery).override(800, 300).into(holder.imageView)
             }
 
             holder.itemView.setOnClickListener {
                 item.linkUrl?.let { url -> navigateToWebView(url) }
             }
-
             Log.d("HomeFragment", "Carregando imagem do carrossel (posição $position): ${item.imageUrl} - ${if (isTablet) "tablet" else "mobile"}")
         }
 
@@ -682,21 +599,15 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     private inner class NewsAdapter : RecyclerView.Adapter<NewsViewHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): NewsViewHolder {
-            val view = LayoutInflater.from(parent.context)
-                .inflate(R.layout.news_item, parent, false)
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.news_item, parent, false)
             return NewsViewHolder(view)
         }
 
         override fun onBindViewHolder(holder: NewsViewHolder, position: Int) {
             val item = newsItems[position]
-
-            Glide.with(holder.itemView.context)
-                .load(item.iconUrl)
-                .into(holder.icon)
-
+            Glide.with(holder.itemView.context).load(item.iconUrl).into(holder.icon)
             holder.title.text = item.title
             holder.description.text = item.description
-
             holder.itemView.setOnClickListener {
                 item.link?.let { url -> navigateToWebView(url) }
             }
