@@ -56,7 +56,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private var newsSectionContainer: View? = null
     private var recentGradesSectionContainer: View? = null
     private var tableRecentGrades: TableLayout? = null
-
+    private var topLoadingBar: View? = null // Nova view para a barra de carregamento no topo
 
     // --- State ---
     private var shouldBlockNavigation = false
@@ -68,6 +68,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     // --- Data Lists ---
     private val carouselItems: MutableList<CarouselItem> = mutableListOf()
     private val newsItems: MutableList<NewsItem> = mutableListOf()
+    private var recentGradesCache: List<NotaRecente> = emptyList()
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -81,13 +82,15 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         const val PREFS_NAME = "HomeFragmentCache"
         const val KEY_CAROUSEL_ITEMS = "carousel_items"
         const val KEY_NEWS_ITEMS = "news_items"
+        const val KEY_RECENT_GRADES = "recent_grades"
         const val KEY_CACHE_TIMESTAMP = "cache_timestamp"
         const val HOME_URL = "https://areaexclusiva.colegioetapa.com.br/home"
         const val NOTAS_URL = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
         const val CALENDARIO_URL_BASE = "https://areaexclusiva.colegioetapa.com.br/provas/datas"
         const val OUT_URL = "https://areaexclusiva.colegioetapa.com.br"
-        const val CAROUSEL_LOADING_DELAY = 250L
-        const val MAX_RECENT_GRADES = 4 // Limite de notas a serem exibidas
+        const val CAROUSEL_LOADING_DELAY = 150L
+        const val MAX_RECENT_GRADES = 8
+        const val MESES = 12
     }
 
     // --- Lifecycle & Setup ---
@@ -101,7 +104,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View = inflater.inflate(R.layout.fragment_home, container, false)
-
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -159,6 +161,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         newsSectionContainer = view.findViewById(R.id.newsSectionContainer)
         recentGradesSectionContainer = view.findViewById(R.id.recentGradesSectionContainer)
         tableRecentGrades = view.findViewById(R.id.tableRecentGrades)
+        topLoadingBar = view.findViewById(R.id.top_loading_bar) // Inicializa a barra
     }
 
     private fun setupRecyclerView() {
@@ -181,6 +184,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
                 if (hasCache) {
                     showContentState()
                     setupUI()
+                    setupRecentGradesTable(recentGradesCache)
                     isDataLoaded = true
                 } else {
                     showLoadingState()
@@ -199,41 +203,59 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     }
 
     private fun fetchDataInBackground() {
+        // Mostrar a barra de carregamento no topo
+        topLoadingBar?.visibility = View.VISIBLE
+
         lifecycleScope.launch {
             try {
-                // Executa todas as buscas de dados em paralelo
-                val homeDocDeferred = async(Dispatchers.IO) { fetchPageData(HOME_URL) }
-                val gradesDocDeferred = async(Dispatchers.IO) { fetchPageData(NOTAS_URL) }
-                val calendarDocsDeferred = (1..12).map { mes ->
-                    async(Dispatchers.IO) { fetchPageData("$CALENDARIO_URL_BASE?mes%5B%5D=$mes") }
-                }
+                // Buscar home page (para verificação de login)
+                val homeDoc = async(Dispatchers.IO) { fetchPageData(HOME_URL) }.await()
 
-                val homeDoc = homeDocDeferred.await()
-                val gradesDoc = gradesDocDeferred.await()
-                val calendarDocs = awaitAll(*calendarDocsDeferred.toTypedArray())
+                if (isFragmentDestroyed) return@launch
 
-                // Processa os dados obtidos
-                val allExams = parseAllCalendarData(calendarDocs)
-                val allGrades = parseAllGradesData(gradesDoc)
-                val recentGrades = findRecentGrades(allExams, allGrades)
+                if (isValidSession(homeDoc)) {
+                    // Processar carrossel e notícias imediatamente
+                    processPageContent(homeDoc)
+                    saveCache()
+                    showContentState()
+                    setupUI()
 
-                withContext(Dispatchers.Main) {
-                    if (isFragmentDestroyed) return@withContext
-
-                    if (isValidSession(homeDoc)) {
-                        processPageContent(homeDoc) // Processa carrossel e notícias
-                        saveCache()
-                        showContentState()
-                        setupUI() // Configura carrossel e notícias
-                        setupRecentGradesTable(recentGrades) // Configura a nova tabela de notas
-                        isDataLoaded = true
-                    } else {
-                        handleInvalidSession()
+                    // Buscar dados de calendário e notas em paralelo
+                    val gradesDoc = async(Dispatchers.IO) { fetchPageData(NOTAS_URL) }
+                    val calendarDocsDeferred = (1..MESES).map { mes ->
+                        async(Dispatchers.IO) { fetchPageData("$CALENDARIO_URL_BASE?mes%5B%5D=$mes") }
                     }
+
+                    val calendarDocs = try {
+                        awaitAll(*calendarDocsDeferred.toTypedArray())
+                    } catch (e: Exception) {
+                        Log.e("HomeFragment", "Erro ao buscar calendário", e)
+                        emptyList()
+                    }
+
+                    val allExams = parseAllCalendarData(calendarDocs)
+                    val allGrades = parseAllGradesData(gradesDoc.await())
+                    val recentGrades = findRecentGrades(allExams, allGrades)
+
+                    saveRecentGradesCache(recentGrades)
+                    recentGradesCache = recentGrades
+
+                    withContext(Dispatchers.Main) {
+                        setupRecentGradesTable(recentGrades)
+                    }
+
+                    isDataLoaded = true
+                } else {
+                    handleInvalidSession()
                 }
-            } catch (e: Exception) { // Captura exceções genéricas de corrotinas ou IO
+            } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     if (!isFragmentDestroyed) handleDataFetchError(e)
+                }
+            } finally {
+                // Esconder a barra de carregamento no topo
+                withContext(Dispatchers.Main) {
+                    topLoadingBar?.visibility = View.GONE
                 }
             }
         }
@@ -251,7 +273,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
                 .get()
         } catch (e: IOException) {
             Log.e("HomeFragment", "Erro ao buscar dados de $url: ${e.message}")
-            null // Retorna nulo em caso de erro de rede
+            null
         }
     }
 
@@ -264,17 +286,21 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
             val rows = table.select("tbody > tr")
             for (tr in rows) {
                 val cells = tr.children()
-                if (cells.size < 4) continue
+                if (cells.size < 5) continue
 
                 try {
-                    val dataStr = cells[0].text().split(" ")[0] // "2/6"
+                    // Ignorar provas de recuperação
+                    val tipo = cells[2].text().lowercase()
+                    if (tipo.contains("rec")) continue
+
+                    val dataStr = cells[0].text().split(" ")[0]
                     val codigo = cells[1].ownText()
                     val conjuntoStr = cells[3].text().filter { it.isDigit() }
 
                     if (dataStr.contains('/') && conjuntoStr.isNotEmpty()) {
                         val dataParts = dataStr.split("/")
                         val day = dataParts[0].toInt()
-                        val month = dataParts[1].toInt() - 1 // Calendar month is 0-indexed
+                        val month = dataParts[1].toInt() - 1
                         val conjunto = conjuntoStr.toInt()
 
                         val calendar = Calendar.getInstance().apply {
@@ -297,9 +323,9 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         val table = doc.selectFirst("table") ?: return emptyList()
 
         val headers = table.select("thead th")
-        val conjuntoMap = mutableMapOf<Int, Int>() // Map<columnIndex, conjuntoNumber>
+        val conjuntoMap = mutableMapOf<Int, Int>()
         headers.forEachIndexed { index, th ->
-            if (index > 1) { // Pular "Código" e "Matéria"
+            if (index > 1) {
                 val conjunto = th.text().filter { it.isDigit() }.toIntOrNull()
                 if (conjunto != null) conjuntoMap[index] = conjunto
             }
@@ -330,18 +356,23 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         val today = Calendar.getInstance()
 
         return allExams
-            .filter { it.data.before(today) || it.data == today } // Apenas provas passadas
-            .sortedByDescending { it.data } // Ordena pela mais recente
+            .filter { it.data.before(today) || it.data == today }
+            .sortedByDescending { it.data }
             .mapNotNull { exam ->
                 val key = "${exam.codigo}-${exam.conjunto}"
                 gradesMap[key]?.let { nota ->
                     if (nota.valor != "--") {
-                        NotaRecente(exam.codigo, exam.conjunto.toString(), nota.valor, exam.data)
+                        NotaRecente(
+                            exam.codigo,
+                            exam.conjunto.toString(),
+                            nota.valor,
+                            exam.data
+                        )
                     } else null
                 }
             }
-            .distinctBy { "${it.codigo}-${it.conjunto}" } // Pega apenas a ocorrência mais recente de cada prova
-            .take(MAX_RECENT_GRADES) // Limita o número de notas
+            .distinctBy { "${it.codigo}-${it.conjunto}" }
+            .take(MAX_RECENT_GRADES)
     }
 
     // --- UI & State Management ---
@@ -484,6 +515,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
             if (loadCache()) {
                 showContentState()
                 setupUI()
+                setupRecentGradesTable(recentGradesCache)
             } else {
                 showOfflineState()
             }
@@ -502,29 +534,58 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         }
     }
 
+    private fun saveRecentGradesCache(grades: List<NotaRecente>) {
+        if (isFragmentDestroyed) return
+        val context = context ?: return
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit {
+            val gson = Gson()
+            putString(KEY_RECENT_GRADES, gson.toJson(grades))
+        }
+    }
+
     private fun loadCache(): Boolean {
         if (isFragmentDestroyed) return false
         val context = context ?: return false
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val cacheTimestamp = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
         if (System.currentTimeMillis() - cacheTimestamp > 24 * 60 * 60 * 1000L) {
-            clearCache(); return false
+            clearCache()
+            return false
         }
         val gson = Gson()
         val carouselJson = prefs.getString(KEY_CAROUSEL_ITEMS, null)
         val newsJson = prefs.getString(KEY_NEWS_ITEMS, null)
+        val recentGradesJson = prefs.getString(KEY_RECENT_GRADES, null)
+
         if (carouselJson != null) {
             val carouselType = object : TypeToken<MutableList<CarouselItem>>() {}.type
             val newsType = object : TypeToken<MutableList<NewsItem>>() {}.type
-            carouselItems.clear(); carouselItems.addAll(gson.fromJson(carouselJson, carouselType))
-            if (newsJson != null) { newsItems.clear(); newsItems.addAll(gson.fromJson(newsJson, newsType)) }
+            val recentGradesType = object : TypeToken<List<NotaRecente>>() {}.type
+
+            carouselItems.clear()
+            carouselItems.addAll(gson.fromJson(carouselJson, carouselType))
+
+            if (newsJson != null) {
+                newsItems.clear()
+                newsItems.addAll(gson.fromJson(newsJson, newsType))
+            }
+
+            if (recentGradesJson != null) {
+                recentGradesCache = gson.fromJson(recentGradesJson, recentGradesType)
+            }
+
             return true
         }
         return false
     }
 
     private fun clearCache() {
-        context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit { clear() }
+        context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit {
+            clear()
+            apply()
+        }
+        recentGradesCache = emptyList()
     }
 
     private fun navigateToWebView(url: String) {

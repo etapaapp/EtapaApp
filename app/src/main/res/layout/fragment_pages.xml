@@ -27,6 +27,7 @@
             <com.google.android.material.progressindicator.CircularProgressIndicator
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:indeterminate="true"
                 app:indicatorColor="?attr/colorPrimary"
                 app:trackColor="?attr/colorSurfaceVariant" />
 
