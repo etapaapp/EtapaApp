@@ -2,20 +2,24 @@ package com.marinov.colegioetapa
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Typeface
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -29,14 +33,18 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.marinov.colegioetapa.WebViewFragment.Companion.createArgs
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
+import java.util.Calendar
 
 class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
+    // --- Views ---
     private var viewPager: ViewPager2? = null
     private var newsRecyclerView: RecyclerView? = null
     private var layoutSemInternet: LinearLayout? = null
@@ -45,32 +53,44 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private var contentContainer: View? = null
     private var txtStuckHint: TextView? = null
     private var carouselLoadingIndicator: CircularProgressIndicator? = null
-    // NOVO: Referência para o container da seção de notícias
     private var newsSectionContainer: View? = null
+    private var recentGradesSectionContainer: View? = null
+    private var tableRecentGrades: TableLayout? = null
 
+
+    // --- State ---
     private var shouldBlockNavigation = false
     private var isFragmentDestroyed = false
     private var hasBeenVisible = false
     private var isDataLoaded = false
     private var isCarouselLoading = false
 
+    // --- Data Lists ---
     private val carouselItems: MutableList<CarouselItem> = mutableListOf()
     private val newsItems: MutableList<NewsItem> = mutableListOf()
 
     private val handler = Handler(Looper.getMainLooper())
 
-    // Constantes
+    // --- Data Classes Internas ---
+    data class ProvaCalendario(val data: Calendar, val codigo: String, val conjunto: Int)
+    data class Nota(val codigo: String, val conjunto: Int, val valor: String)
+    data class NotaRecente(val codigo: String, val conjunto: String, val nota: String, val data: Calendar)
+
+    // --- Constantes ---
     private companion object {
         const val PREFS_NAME = "HomeFragmentCache"
         const val KEY_CAROUSEL_ITEMS = "carousel_items"
         const val KEY_NEWS_ITEMS = "news_items"
-        const val CAROUSEL_ASPECT_RATIO = 8f / 3f
         const val KEY_CACHE_TIMESTAMP = "cache_timestamp"
         const val HOME_URL = "https://areaexclusiva.colegioetapa.com.br/home"
+        const val NOTAS_URL = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
+        const val CALENDARIO_URL_BASE = "https://areaexclusiva.colegioetapa.com.br/provas/datas"
         const val OUT_URL = "https://areaexclusiva.colegioetapa.com.br"
-        const val CAROUSEL_LOADING_DELAY = 250L // 250ms
+        const val CAROUSEL_LOADING_DELAY = 250L
+        const val MAX_RECENT_GRADES = 4 // Limite de notas a serem exibidas
     }
 
+    // --- Lifecycle & Setup ---
     override fun onAttach(context: Context) {
         super.onAttach(context)
         if (context !is WebViewFragment.LoginSuccessListener) {
@@ -78,23 +98,14 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         }
     }
 
-    fun onLoginSuccess() {
-        Log.d("HomeFragment", "Login bem-sucedido - forçando recarregamento")
-        clearCache()
-        isDataLoaded = false
-        checkInternetAndLoadData()
-    }
-
     override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        return inflater.inflate(R.layout.fragment_home, container, false)
-    }
+        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+    ): View = inflater.inflate(R.layout.fragment_home, container, false)
+
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        isFragmentDestroyed = false
         shouldBlockNavigation = false
         initializeViews(view)
         setupRecyclerView()
@@ -108,38 +119,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         buscarDadosAtualizados()
     }
 
-    private fun buscarDadosAtualizados() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val doc = fetchHomePageData()
-                withContext(Dispatchers.Main) {
-                    if (isFragmentDestroyed) return@withContext
-
-                    if (isValidSession(doc)) {
-                        processPageContent(doc)
-                        saveCache()
-                        setupUI()
-                        showContentState()
-                        isDataLoaded = true
-                    } else {
-                        handleInvalidSession()
-                    }
-                    (requireActivity() as MainActivity).setRefreshing(false)
-                }
-            } catch (e: IOException) {
-                withContext(Dispatchers.Main) {
-                    if (!isFragmentDestroyed) {
-                        Log.e("HomeFragment", "Erro ao buscar dados: ${e.message}")
-                        if (!isDataLoaded) {
-                            showOfflineState()
-                        }
-                        (requireActivity() as MainActivity).setRefreshing(false)
-                    }
-                }
-            }
-        }
-    }
-
     override fun onPause() {
         super.onPause()
         shouldBlockNavigation = true
@@ -149,7 +128,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         super.onResume()
         shouldBlockNavigation = false
         if (hasBeenVisible && !isDataLoaded) {
-            Log.d("HomeFragment", "Retornando do WebView - verificando necessidade de recarregamento")
             checkInternetAndLoadData()
         }
         hasBeenVisible = true
@@ -178,16 +156,13 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         newsRecyclerView = view.findViewById(R.id.newsRecyclerView)
         txtStuckHint = view.findViewById(R.id.txtStuckHint)
         carouselLoadingIndicator = view.findViewById(R.id.carouselLoadingIndicator)
-        // NOVO: Inicializando a referência do container de notícias
         newsSectionContainer = view.findViewById(R.id.newsSectionContainer)
+        recentGradesSectionContainer = view.findViewById(R.id.recentGradesSectionContainer)
+        tableRecentGrades = view.findViewById(R.id.tableRecentGrades)
     }
 
     private fun setupRecyclerView() {
-        newsRecyclerView?.layoutManager = LinearLayoutManager(
-            context,
-            LinearLayoutManager.HORIZONTAL,
-            false
-        )
+        newsRecyclerView?.layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
     }
 
     private fun setupListeners() {
@@ -197,38 +172,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         }
     }
 
-    private fun configureCarouselHeight() {
-        val viewPager = this.viewPager ?: return
-        val context = context ?: return
-
-        val isTablet = resources.configuration.screenWidthDp >= 600
-        if (isTablet) {
-            return
-        }
-
-        val screenWidth = resources.displayMetrics.widthPixels
-        val horizontalPadding = resources.getDimensionPixelSize(R.dimen.carousel_margin) * 2 +
-                context.resources.getDimensionPixelSize(R.dimen.activity_horizontal_margin)
-        val availableWidth = screenWidth - horizontalPadding
-        val calculatedHeight = (availableWidth * 300) / 800
-        val minHeight = resources.getDimensionPixelSize(R.dimen.carousel_min_height)
-        val maxHeight = resources.getDimensionPixelSize(R.dimen.carousel_max_height)
-        val finalHeight = calculatedHeight.coerceIn(minHeight, maxHeight)
-
-        val layoutParams = viewPager.layoutParams
-        layoutParams.height = finalHeight
-        layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
-        viewPager.layoutParams = layoutParams
-
-        viewPager.apply {
-            clipToPadding = false
-            clipChildren = false
-            offscreenPageLimit = 1
-            setPageTransformer(null)
-        }
-
-        Log.d("HomeFragment", "Altura do carrossel configurada: $finalHeight px (largura: $availableWidth px) - mobile")
-    }
+    // --- Data Fetching & Processing ---
 
     private fun checkInternetAndLoadData() {
         if (hasInternetConnection()) {
@@ -241,70 +185,289 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
                 } else {
                     showLoadingState()
                 }
-                fetchDataInBackground()
-            } else {
-                showLoadingState()
-                fetchDataInBackground()
             }
+            fetchDataInBackground()
         } else {
             showOfflineState()
         }
     }
 
+    private fun buscarDadosAtualizados() {
+        isDataLoaded = false
+        checkInternetAndLoadData()
+        (requireActivity() as? MainActivity)?.setRefreshing(false)
+    }
+
     private fun fetchDataInBackground() {
-        lifecycleScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch {
             try {
-                val doc = fetchHomePageData()
+                // Executa todas as buscas de dados em paralelo
+                val homeDocDeferred = async(Dispatchers.IO) { fetchPageData(HOME_URL) }
+                val gradesDocDeferred = async(Dispatchers.IO) { fetchPageData(NOTAS_URL) }
+                val calendarDocsDeferred = (1..12).map { mes ->
+                    async(Dispatchers.IO) { fetchPageData("$CALENDARIO_URL_BASE?mes%5B%5D=$mes") }
+                }
+
+                val homeDoc = homeDocDeferred.await()
+                val gradesDoc = gradesDocDeferred.await()
+                val calendarDocs = awaitAll(*calendarDocsDeferred.toTypedArray())
+
+                // Processa os dados obtidos
+                val allExams = parseAllCalendarData(calendarDocs)
+                val allGrades = parseAllGradesData(gradesDoc)
+                val recentGrades = findRecentGrades(allExams, allGrades)
+
                 withContext(Dispatchers.Main) {
                     if (isFragmentDestroyed) return@withContext
-                    if (isValidSession(doc)) {
-                        processPageContent(doc)
+
+                    if (isValidSession(homeDoc)) {
+                        processPageContent(homeDoc) // Processa carrossel e notícias
                         saveCache()
                         showContentState()
-                        setupUI()
+                        setupUI() // Configura carrossel e notícias
+                        setupRecentGradesTable(recentGrades) // Configura a nova tabela de notas
                         isDataLoaded = true
                     } else {
                         handleInvalidSession()
                     }
                 }
-            } catch (e: IOException) {
+            } catch (e: Exception) { // Captura exceções genéricas de corrotinas ou IO
                 withContext(Dispatchers.Main) {
-                    if (!isFragmentDestroyed) {
-                        handleDataFetchError(e)
-                    }
+                    if (!isFragmentDestroyed) handleDataFetchError(e)
                 }
             }
         }
     }
 
     @Throws(IOException::class)
-    private fun fetchHomePageData(): Document {
-        val cookieManager = CookieManager.getInstance()
-        val cookies = cookieManager.getCookie(HOME_URL)
-        return Jsoup.connect(HOME_URL)
-            .userAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15")
-            .header("Cookie", cookies ?: "")
-            .timeout(15000)
-            .get()
+    private fun fetchPageData(url: String): Document? {
+        return try {
+            val cookieManager = CookieManager.getInstance()
+            val cookies = cookieManager.getCookie(url)
+            Jsoup.connect(url)
+                .header("Cookie", cookies ?: "")
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
+                .timeout(20000)
+                .get()
+        } catch (e: IOException) {
+            Log.e("HomeFragment", "Erro ao buscar dados de $url: ${e.message}")
+            null // Retorna nulo em caso de erro de rede
+        }
     }
 
-    private fun isValidSession(doc: Document): Boolean {
-        return doc.getElementById("home_banners_carousel") != null &&
-                doc.selectFirst("div.col-12.col-lg-8.mb-5") != null
+    private fun parseAllCalendarData(docs: List<Document?>): List<ProvaCalendario> {
+        val allExams = mutableListOf<ProvaCalendario>()
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+
+        docs.filterNotNull().forEach { doc ->
+            val table = doc.selectFirst("table") ?: return@forEach
+            val rows = table.select("tbody > tr")
+            for (tr in rows) {
+                val cells = tr.children()
+                if (cells.size < 4) continue
+
+                try {
+                    val dataStr = cells[0].text().split(" ")[0] // "2/6"
+                    val codigo = cells[1].ownText()
+                    val conjuntoStr = cells[3].text().filter { it.isDigit() }
+
+                    if (dataStr.contains('/') && conjuntoStr.isNotEmpty()) {
+                        val dataParts = dataStr.split("/")
+                        val day = dataParts[0].toInt()
+                        val month = dataParts[1].toInt() - 1 // Calendar month is 0-indexed
+                        val conjunto = conjuntoStr.toInt()
+
+                        val calendar = Calendar.getInstance().apply {
+                            set(currentYear, month, day, 0, 0, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }
+                        allExams.add(ProvaCalendario(calendar, codigo, conjunto))
+                    }
+                } catch (e: Exception) {
+                    Log.e("HomeFragment", "Erro ao parsear linha do calendário: ${tr.text()}", e)
+                }
+            }
+        }
+        return allExams
+    }
+
+    private fun parseAllGradesData(doc: Document?): List<Nota> {
+        if (doc == null) return emptyList()
+        val allGrades = mutableListOf<Nota>()
+        val table = doc.selectFirst("table") ?: return emptyList()
+
+        val headers = table.select("thead th")
+        val conjuntoMap = mutableMapOf<Int, Int>() // Map<columnIndex, conjuntoNumber>
+        headers.forEachIndexed { index, th ->
+            if (index > 1) { // Pular "Código" e "Matéria"
+                val conjunto = th.text().filter { it.isDigit() }.toIntOrNull()
+                if (conjunto != null) conjuntoMap[index] = conjunto
+            }
+        }
+
+        val rows = table.select("tbody > tr")
+        for (tr in rows) {
+            val cols = tr.children()
+            if (cols.size <= 1) continue
+            val codigo = cols[1].text()
+
+            cols.forEachIndexed { colIndex, td ->
+                conjuntoMap[colIndex]?.let { conjunto ->
+                    val nota = td.text()
+                    if (nota.isNotEmpty()) {
+                        allGrades.add(Nota(codigo, conjunto, nota))
+                    }
+                }
+            }
+        }
+        return allGrades
+    }
+
+    private fun findRecentGrades(allExams: List<ProvaCalendario>, allGrades: List<Nota>): List<NotaRecente> {
+        if (allExams.isEmpty() || allGrades.isEmpty()) return emptyList()
+
+        val gradesMap = allGrades.associateBy { "${it.codigo}-${it.conjunto}" }
+        val today = Calendar.getInstance()
+
+        return allExams
+            .filter { it.data.before(today) || it.data == today } // Apenas provas passadas
+            .sortedByDescending { it.data } // Ordena pela mais recente
+            .mapNotNull { exam ->
+                val key = "${exam.codigo}-${exam.conjunto}"
+                gradesMap[key]?.let { nota ->
+                    if (nota.valor != "--") {
+                        NotaRecente(exam.codigo, exam.conjunto.toString(), nota.valor, exam.data)
+                    } else null
+                }
+            }
+            .distinctBy { "${it.codigo}-${it.conjunto}" } // Pega apenas a ocorrência mais recente de cada prova
+            .take(MAX_RECENT_GRADES) // Limita o número de notas
+    }
+
+    // --- UI & State Management ---
+
+    private fun setupUI() {
+        setupCarouselWithLoading()
+        setupNews()
+    }
+
+    private fun setupNews() {
+        if (isFragmentDestroyed) return
+        if (newsItems.isNotEmpty()) {
+            newsSectionContainer?.visibility = View.VISIBLE
+            newsRecyclerView?.adapter = NewsAdapter()
+        } else {
+            newsSectionContainer?.visibility = View.GONE
+        }
+    }
+
+    private fun setupRecentGradesTable(grades: List<NotaRecente>) {
+        if (isFragmentDestroyed || tableRecentGrades == null) return
+        val context = context ?: return
+
+        tableRecentGrades?.removeAllViews()
+
+        if (grades.isEmpty()) {
+            recentGradesSectionContainer?.visibility = View.GONE
+            return
+        }
+
+        recentGradesSectionContainer?.visibility = View.VISIBLE
+
+        // Header Row
+        val headerRow = TableRow(context)
+        headerRow.setBackgroundColor(ContextCompat.getColor(context, R.color.header_bg))
+        headerRow.addView(createGradeTableCell("Código", true, context))
+        headerRow.addView(createGradeTableCell("Conjunto", true, context))
+        headerRow.addView(createGradeTableCell("Nota", true, context))
+        tableRecentGrades?.addView(headerRow)
+
+        // Data Rows
+        for (grade in grades) {
+            val dataRow = TableRow(context)
+            dataRow.addView(createGradeTableCell(grade.codigo, false, context))
+            dataRow.addView(createGradeTableCell(grade.conjunto, false, context))
+            dataRow.addView(createGradeTableCell(grade.nota, false, context))
+            tableRecentGrades?.addView(dataRow)
+        }
+    }
+
+    private fun createGradeTableCell(txt: String, isHeader: Boolean, context: Context): TextView {
+        return TextView(context).apply {
+            text = txt
+            setTypeface(null, if (isHeader) Typeface.BOLD else Typeface.NORMAL)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (isHeader) 13f else 12f)
+            val h = (12 * resources.displayMetrics.density).toInt()
+            val v = (8 * resources.displayMetrics.density).toInt()
+            setPadding(h, v, h, v)
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+            setTextColor(ContextCompat.getColor(context, R.color.colorOnSurface))
+        }
+    }
+
+    fun onLoginSuccess() {
+        Log.d("HomeFragment", "Login bem-sucedido - forçando recarregamento")
+        clearCache()
+        isDataLoaded = false
+        checkInternetAndLoadData()
+    }
+
+    private fun configureCarouselHeight() {
+        val viewPager = this.viewPager ?: return
+        val context = context ?: return
+        val isTablet = resources.configuration.screenWidthDp >= 600
+        if (isTablet) return
+
+        val screenWidth = resources.displayMetrics.widthPixels
+        val horizontalPadding = resources.getDimensionPixelSize(R.dimen.carousel_margin) * 2 +
+                context.resources.getDimensionPixelSize(R.dimen.activity_horizontal_margin)
+        val availableWidth = screenWidth - horizontalPadding
+        val calculatedHeight = (availableWidth * 300) / 800
+        val minHeight = resources.getDimensionPixelSize(R.dimen.carousel_min_height)
+        val maxHeight = resources.getDimensionPixelSize(R.dimen.carousel_max_height)
+        val finalHeight = calculatedHeight.coerceIn(minHeight, maxHeight)
+
+        val layoutParams = viewPager.layoutParams
+        layoutParams.height = finalHeight
+        viewPager.layoutParams = layoutParams
+    }
+
+    private fun isValidSession(doc: Document?): Boolean {
+        return doc?.getElementById("home_banners_carousel") != null
     }
 
     private fun processPageContent(doc: Document?) {
+        if (doc == null) return
         val newCarousel = mutableListOf<CarouselItem>()
         val newNews = mutableListOf<NewsItem>()
-
         processCarousel(doc, newCarousel)
         processNews(doc, newNews)
+        carouselItems.clear(); carouselItems.addAll(newCarousel)
+        newsItems.clear(); newsItems.addAll(newNews)
+    }
 
-        carouselItems.clear()
-        carouselItems.addAll(newCarousel)
+    private fun processCarousel(doc: Document, carouselList: MutableList<CarouselItem>) {
+        val carousel = doc.getElementById("home_banners_carousel") ?: return
+        val items = carousel.select(".carousel-item")
+        for (item in items) {
+            val linkUrl = item.selectFirst("a")?.attr("href") ?: ""
+            var imgUrl = item.select("img").attr("src")
+            if (!imgUrl.startsWith("http")) imgUrl = "https://www.colegioetapa.com.br$imgUrl"
+            carouselList.add(CarouselItem(imgUrl, linkUrl))
+        }
+    }
 
-        newsItems.clear()
-        newsItems.addAll(newNews)
+    private fun processNews(doc: Document, newsList: MutableList<NewsItem>) {
+        val newsSection = doc.selectFirst("div.col-12.col-lg-8.mb-5") ?: return
+        val cards = newsSection.select(".card.border-radius-card").not("#modal-avisos-importantes .card.border-radius-card")
+        for (card in cards) {
+            var iconUrl = card.select("img.aviso-icon").attr("src")
+            val title = card.select("p.text-blue.aviso-text").text()
+            val desc = card.select("p.m-0.aviso-text").text()
+            val link = card.select("a[target=_blank]").attr("href")
+            if (!iconUrl.startsWith("http")) iconUrl = "https://areaexclusiva.colegioetapa.com.br$iconUrl"
+            if (newsList.none { it.title == title }) newsList.add(NewsItem(iconUrl, title, desc, link))
+        }
     }
 
     private fun handleInvalidSession() {
@@ -314,11 +477,16 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         navigateToWebView(OUT_URL)
     }
 
-    private fun handleDataFetchError(e: IOException) {
+    private fun handleDataFetchError(e: Exception) {
         if (isFragmentDestroyed) return
-        Log.e("HomeFragment", "Erro ao buscar dados: ${e.message}")
+        Log.e("HomeFragment", "Erro ao buscar dados: ${e.message}", e)
         if (!isDataLoaded) {
-            navigateToWebView(OUT_URL)
+            if (loadCache()) {
+                showContentState()
+                setupUI()
+            } else {
+                showOfflineState()
+            }
         }
     }
 
@@ -338,105 +506,34 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         if (isFragmentDestroyed) return false
         val context = context ?: return false
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-
         val cacheTimestamp = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
-        val currentTime = System.currentTimeMillis()
-        val cacheAge = currentTime - cacheTimestamp
-        val maxCacheAge = 24 * 60 * 60 * 1000L // 24 horas
-
-        if (cacheAge > maxCacheAge) {
-            clearCache()
-            return false
+        if (System.currentTimeMillis() - cacheTimestamp > 24 * 60 * 60 * 1000L) {
+            clearCache(); return false
         }
-
         val gson = Gson()
         val carouselJson = prefs.getString(KEY_CAROUSEL_ITEMS, null)
         val newsJson = prefs.getString(KEY_NEWS_ITEMS, null)
-
-        if (carouselJson != null && newsJson != null) {
+        if (carouselJson != null) {
             val carouselType = object : TypeToken<MutableList<CarouselItem>>() {}.type
             val newsType = object : TypeToken<MutableList<NewsItem>>() {}.type
-
-            val cachedCarousel = gson.fromJson<MutableList<CarouselItem>>(carouselJson, carouselType)
-            val cachedNews = gson.fromJson<MutableList<NewsItem>>(newsJson, newsType)
-
-            // Alteração aqui: não exigir que notícias existam para carregar cache do carrossel
-            if (cachedCarousel?.isNotEmpty() == true) {
-                carouselItems.clear()
-                carouselItems.addAll(cachedCarousel)
-
-                newsItems.clear()
-                if(cachedNews != null) {
-                    newsItems.addAll(cachedNews)
-                }
-                return true
-            }
+            carouselItems.clear(); carouselItems.addAll(gson.fromJson(carouselJson, carouselType))
+            if (newsJson != null) { newsItems.clear(); newsItems.addAll(gson.fromJson(newsJson, newsType)) }
+            return true
         }
         return false
     }
 
     private fun clearCache() {
-        if (isFragmentDestroyed) return
-        val context = context ?: return
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit {
-            remove(KEY_CAROUSEL_ITEMS)
-            remove(KEY_NEWS_ITEMS)
-            remove(KEY_CACHE_TIMESTAMP)
-        }
-    }
-
-    private fun processCarousel(doc: Document?, carouselList: MutableList<CarouselItem>) {
-        if (doc == null) return
-        val carousel = doc.getElementById("home_banners_carousel") ?: return
-        val items = carousel.select(".carousel-item")
-        for (item in items) {
-            if (isFragmentDestroyed) return
-            val linkElem = item.selectFirst("a")
-            val linkUrl = linkElem?.attr("href") ?: ""
-            var imgUrl = item.select("img").attr("src")
-            if (!imgUrl.startsWith("http")) {
-                imgUrl = "https://www.colegioetapa.com.br$imgUrl"
-            }
-            carouselList.add(CarouselItem(imgUrl, linkUrl))
-        }
-    }
-
-    private fun processNews(doc: Document?, newsList: MutableList<NewsItem>) {
-        if (doc == null) return
-        val newsSection = doc.selectFirst("div.col-12.col-lg-8.mb-5") ?: return
-        val cards = newsSection.select(".card.border-radius-card")
-        cards.removeAll(newsSection.select("#modal-avisos-importantes .card.border-radius-card"))
-        for (card in cards) {
-            var iconUrl = card.select("img.aviso-icon").attr("src")
-            val title = card.select("p.text-blue.aviso-text").text()
-            val desc = card.select("p.m-0.aviso-text").text()
-            val link = card.select("a[target=_blank]").attr("href")
-            if (!iconUrl.startsWith("http")) {
-                iconUrl = "https://areaexclusiva.colegioetapa.com.br$iconUrl"
-            }
-            if (!isDuplicateNews(title, newsList)) {
-                newsList.add(NewsItem(iconUrl, title, desc, link))
-            }
-        }
-    }
-
-    private fun isDuplicateNews(title: String?, newsList: MutableList<NewsItem>): Boolean {
-        return newsList.any { it.title == title }
+        context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit { clear() }
     }
 
     private fun navigateToWebView(url: String) {
         if (shouldBlockNavigation || isFragmentDestroyed) return
         try {
-            val fragment = WebViewFragment().apply {
-                arguments = createArgs(url)
-            }
-            requireActivity().supportFragmentManager
-                .beginTransaction()
+            val fragment = WebViewFragment().apply { arguments = createArgs(url) }
+            requireActivity().supportFragmentManager.beginTransaction()
                 .setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
-                .replace(R.id.nav_host_fragment, fragment)
-                .addToBackStack(null)
-                .commitAllowingStateLoss()
+                .replace(R.id.nav_host_fragment, fragment).addToBackStack(null).commitAllowingStateLoss()
         } catch (e: IllegalStateException) {
             Log.e("HomeFragment", "Navigation blocked: ${e.message}")
         }
@@ -444,32 +541,46 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     private fun showLoadingState() {
         if (isFragmentDestroyed) return
-        handler.post {
-            loadingContainer?.visibility = View.VISIBLE
-            contentContainer?.visibility = View.GONE
-            layoutSemInternet?.visibility = View.GONE
-            txtStuckHint?.visibility = View.VISIBLE
-        }
+        loadingContainer?.visibility = View.VISIBLE
+        contentContainer?.visibility = View.GONE
+        layoutSemInternet?.visibility = View.GONE
     }
 
     private fun showContentState() {
         if (isFragmentDestroyed) return
-        handler.post {
-            loadingContainer?.visibility = View.GONE
-            contentContainer?.visibility = View.VISIBLE
-            layoutSemInternet?.visibility = View.GONE
-            txtStuckHint?.visibility = View.GONE
-        }
+        loadingContainer?.visibility = View.GONE
+        contentContainer?.visibility = View.VISIBLE
+        layoutSemInternet?.visibility = View.GONE
     }
 
     private fun showOfflineState() {
         if (isFragmentDestroyed) return
-        handler.post {
-            loadingContainer?.visibility = View.GONE
-            contentContainer?.visibility = View.GONE
-            layoutSemInternet?.visibility = View.VISIBLE
-            txtStuckHint?.visibility = View.GONE
-        }
+        loadingContainer?.visibility = View.GONE
+        contentContainer?.visibility = View.GONE
+        layoutSemInternet?.visibility = View.VISIBLE
+    }
+
+    private fun hasInternetConnection(): Boolean {
+        val connectivityManager = context?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    private fun setupCarouselWithLoading() {
+        if (carouselItems.isEmpty() || isFragmentDestroyed) return
+        showCarouselLoading()
+        configureCarouselHeight()
+        handler.postDelayed({
+            if (isFragmentDestroyed || !isCarouselLoading) return@postDelayed
+            setupCarousel()
+            hideCarouselLoading()
+        }, CAROUSEL_LOADING_DELAY)
+    }
+
+    private fun setupCarousel() {
+        if (carouselItems.isEmpty() || isFragmentDestroyed) return
+        viewPager?.adapter = CarouselAdapter()
     }
 
     private fun showCarouselLoading() {
@@ -486,155 +597,31 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         viewPager?.visibility = View.VISIBLE
     }
 
-    private fun hasInternetConnection(): Boolean {
-        if (isFragmentDestroyed) return false
-        val context = context ?: return false
-        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
-        val network = connectivityManager.activeNetwork ?: return false
-        val networkCapabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-        return networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-    }
-
-    private fun setupUI() {
-        setupCarouselWithLoading()
-        setupNews()
-    }
-
-    private fun setupCarouselWithLoading() {
-        if (carouselItems.isEmpty() || isFragmentDestroyed) return
-        Log.d("HomeFragment", "Configurando carrossel com ${carouselItems.size} itens")
-        showCarouselLoading()
-        configureCarouselHeight()
-        handler.postDelayed({
-            if (isFragmentDestroyed || !isCarouselLoading) return@postDelayed
-            setupCarousel()
-            hideCarouselLoading()
-        }, CAROUSEL_LOADING_DELAY)
-    }
-
-    private fun setupCarousel() {
-        if (carouselItems.isEmpty() || isFragmentDestroyed) return
-        val viewPager = this.viewPager ?: return
-        val adapter = CarouselAdapter()
-        viewPager.adapter = adapter
-        viewPager.apply {
-            requestLayout()
-            invalidate()
-            measure(
-                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(layoutParams.height, View.MeasureSpec.EXACTLY)
-            )
-            layout(left, top, right, top + layoutParams.height)
-        }
-        val parentView = viewPager.parent as? View
-        parentView?.let {
-            it.requestLayout()
-            it.invalidate()
-        }
-        Log.d("HomeFragment", "Carrossel configurado com altura: ${viewPager.layoutParams.height}px")
-    }
-
-    // ATUALIZADO: Lógica para mostrar/ocultar a seção de notícias
-    private fun setupNews() {
-        if (isFragmentDestroyed) return
-
-        if (newsItems.isNotEmpty()) {
-            // Se há notícias, mostra o container e configura o adapter
-            Log.d("HomeFragment", "Configurando notícias com ${newsItems.size} itens")
-            newsSectionContainer?.visibility = View.VISIBLE
-            newsRecyclerView?.adapter = NewsAdapter()
-        } else {
-            // Se não há notícias, oculta o container
-            Log.d("HomeFragment", "Nenhuma notícia para exibir. Ocultando a seção.")
-            newsSectionContainer?.visibility = View.GONE
-        }
-    }
-
+    // Adapters e ViewHolders
     private inner class CarouselAdapter : RecyclerView.Adapter<CarouselViewHolder>() {
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CarouselViewHolder {
-            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_carousel, parent, false)
-            return CarouselViewHolder(view)
-        }
-
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = CarouselViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_carousel, parent, false))
         override fun onBindViewHolder(holder: CarouselViewHolder, position: Int) {
             val item = carouselItems[position]
-            val context = holder.itemView.context
-            val isTablet = context.resources.configuration.screenWidthDp >= 600
-
-            holder.imageView.apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                adjustViewBounds = false
-                val layoutParams = this.layoutParams as FrameLayout.LayoutParams
-                layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
-                layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
-                layoutParams.setMargins(0, 0, 0, 0)
-                this.layoutParams = layoutParams
-                setPadding(0, 0, 0, 0)
-            }
-
-            if (isTablet) {
-                val viewPager = this@HomeFragment.viewPager
-                val actualWidth = viewPager?.width ?: context.resources.displayMetrics.widthPixels
-                val actualHeight = viewPager?.height ?: run {
-                    val screenWidth = context.resources.displayMetrics.widthPixels
-                    val horizontalPadding = context.resources.getDimensionPixelSize(R.dimen.carousel_padding_horizontal) * 2 +
-                            context.resources.getDimensionPixelSize(R.dimen.carousel_margin) * 2
-                    val targetWidth = screenWidth - horizontalPadding
-                    (targetWidth / CAROUSEL_ASPECT_RATIO).toInt()
-                }
-                Glide.with(context).load(item.imageUrl).centerCrop().placeholder(android.R.drawable.ic_menu_gallery).error(android.R.drawable.ic_menu_gallery).override(actualWidth, actualHeight).fitCenter().into(holder.imageView)
-            } else {
-                Glide.with(context).load(item.imageUrl).centerCrop().placeholder(android.R.drawable.ic_menu_gallery).error(android.R.drawable.ic_menu_gallery).override(800, 300).into(holder.imageView)
-            }
-
-            holder.itemView.setOnClickListener {
-                item.linkUrl?.let { url -> navigateToWebView(url) }
-            }
-            Log.d("HomeFragment", "Carregando imagem do carrossel (posição $position): ${item.imageUrl} - ${if (isTablet) "tablet" else "mobile"}")
+            Glide.with(holder.itemView.context).load(item.imageUrl).centerCrop().into(holder.imageView)
+            holder.itemView.setOnClickListener { item.linkUrl?.let { navigateToWebView(it) } }
         }
-
-        override fun getItemCount(): Int = carouselItems.size
+        override fun getItemCount() = carouselItems.size
     }
 
     private inner class NewsAdapter : RecyclerView.Adapter<NewsViewHolder>() {
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): NewsViewHolder {
-            val view = LayoutInflater.from(parent.context).inflate(R.layout.news_item, parent, false)
-            return NewsViewHolder(view)
-        }
-
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = NewsViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.news_item, parent, false))
         override fun onBindViewHolder(holder: NewsViewHolder, position: Int) {
             val item = newsItems[position]
             Glide.with(holder.itemView.context).load(item.iconUrl).into(holder.icon)
             holder.title.text = item.title
             holder.description.text = item.description
-            holder.itemView.setOnClickListener {
-                item.link?.let { url -> navigateToWebView(url) }
-            }
+            holder.itemView.setOnClickListener { item.link?.let { navigateToWebView(it) } }
         }
-
-        override fun getItemCount(): Int = newsItems.size
+        override fun getItemCount() = newsItems.size
     }
 
-    internal class CarouselViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val imageView: ImageView = itemView.findViewById(R.id.imageView)
-    }
-
-    internal class NewsViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val icon: ImageView = view.findViewById(R.id.news_icon)
-        val title: TextView = view.findViewById(R.id.news_title)
-        val description: TextView = view.findViewById(R.id.news_description)
-    }
-
-    data class CarouselItem(
-        val imageUrl: String?,
-        val linkUrl: String?
-    )
-
-    data class NewsItem(
-        val iconUrl: String?,
-        val title: String?,
-        val description: String?,
-        val link: String?
-    )
+    internal class CarouselViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) { val imageView: ImageView = itemView.findViewById(R.id.imageView) }
+    internal class NewsViewHolder(view: View) : RecyclerView.ViewHolder(view) { val icon: ImageView = view.findViewById(R.id.news_icon); val title: TextView = view.findViewById(R.id.news_title); val description: TextView = view.findViewById(R.id.news_description) }
+    data class CarouselItem(val imageUrl: String?, val linkUrl: String?)
+    data class NewsItem(val iconUrl: String?, val title: String?, val description: String?, val link: String?)
 }

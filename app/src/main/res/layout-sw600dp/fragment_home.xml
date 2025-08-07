@@ -76,7 +76,6 @@
                         android:layout_width="match_parent"
                         android:layout_height="match_parent">
 
-                        <!-- ViewPager do Carrossel -->
                         <androidx.viewpager2.widget.ViewPager2
                             android:id="@+id/viewPager"
                             android:layout_width="match_parent"
@@ -87,7 +86,6 @@
                             android:visibility="visible"
                             tools:itemCount="5" />
 
-                        <!-- Loading Indicator do Carrossel -->
                         <com.google.android.material.progressindicator.CircularProgressIndicator
                             android:id="@+id/carouselLoadingIndicator"
                             android:layout_width="40dp"
@@ -96,13 +94,10 @@
                             android:visibility="gone"
                             app:indicatorColor="?attr/colorPrimary"
                             app:trackColor="?attr/colorSurfaceVariant" />
-
                     </FrameLayout>
-
                 </androidx.cardview.widget.CardView>
 
                 <!-- Seção de Notícias -->
-                <!-- MODIFICADO: Adicionado ID e visibilidade inicial 'gone' -->
                 <LinearLayout
                     android:id="@+id/newsSectionContainer"
                     android:layout_width="match_parent"
@@ -130,6 +125,43 @@
                         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
                         tools:listitem="@layout/news_item"
                         android:nestedScrollingEnabled="false"/>
+                </LinearLayout>
+
+                <!-- NOVO: Seção de Últimas Notas -->
+                <LinearLayout
+                    android:id="@+id/recentGradesSectionContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="24dp"
+                    android:padding="8dp"
+                    android:visibility="gone"
+                    tools:visibility="visible">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Notas"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="22sp"
+                        android:layout_marginBottom="12dp"/>
+
+                    <com.google.android.material.card.MaterialCardView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        app:cardCornerRadius="8dp"
+                        app:cardElevation="4dp">
+
+                        <TableLayout
+                            android:id="@+id/tableRecentGrades"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:shrinkColumns="*"
+                            android:stretchColumns="*"
+                            android:background="@color/fundocartao" />
+
+                    </com.google.android.material.card.MaterialCardView>
                 </LinearLayout>
 
             </LinearLayout>
