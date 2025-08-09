@@ -25,6 +25,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.Glide
 import com.google.android.material.button.MaterialButton
@@ -42,9 +43,10 @@ import org.jsoup.nodes.Document
 import java.io.IOException
 import java.util.Calendar
 
-class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
+class HomeFragment : Fragment() {
 
     // --- Views ---
+    private var swipeRefreshLayout: SwipeRefreshLayout? = null
     private var viewPager: ViewPager2? = null
     private var newsRecyclerView: RecyclerView? = null
     private var layoutSemInternet: LinearLayout? = null
@@ -56,14 +58,17 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     private var newsSectionContainer: View? = null
     private var recentGradesSectionContainer: View? = null
     private var tableRecentGrades: TableLayout? = null
-    private var topLoadingBar: View? = null // Nova view para a barra de carregamento no topo
+    private var topLoadingBar: View? = null
+
+    // --- Adapters ---
+    private lateinit var carouselAdapter: CarouselAdapter
+    private lateinit var newsAdapter: NewsAdapter
 
     // --- State ---
     private var shouldBlockNavigation = false
     private var isFragmentDestroyed = false
     private var hasBeenVisible = false
     private var isDataLoaded = false
-    private var isCarouselLoading = false
 
     // --- Data Lists ---
     private val carouselItems: MutableList<CarouselItem> = mutableListOf()
@@ -88,7 +93,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         const val NOTAS_URL = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
         const val CALENDARIO_URL_BASE = "https://areaexclusiva.colegioetapa.com.br/provas/datas"
         const val OUT_URL = "https://areaexclusiva.colegioetapa.com.br"
-        const val CAROUSEL_LOADING_DELAY = 150L
         const val MAX_RECENT_GRADES = 8
         const val MESES = 12
     }
@@ -110,15 +114,11 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         isFragmentDestroyed = false
         shouldBlockNavigation = false
         initializeViews(view)
+        setupAdapters()
         setupRecyclerView()
         setupListeners()
         configureCarouselHeight()
         checkInternetAndLoadData()
-    }
-
-    override fun onRefresh() {
-        Log.d("HomeFragment", "Pull-to-Refresh acionado")
-        buscarDadosAtualizados()
     }
 
     override fun onPause() {
@@ -138,9 +138,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         configureCarouselHeight()
-        if (carouselItems.isNotEmpty()) {
-            setupCarouselWithLoading()
-        }
     }
 
     override fun onDestroyView() {
@@ -150,6 +147,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     }
 
     private fun initializeViews(view: View) {
+        swipeRefreshLayout = view.findViewById(R.id.swipe_refresh_layout)
         loadingContainer = view.findViewById(R.id.loadingContainer)
         contentContainer = view.findViewById(R.id.contentContainer)
         layoutSemInternet = view.findViewById(R.id.layout_sem_internet)
@@ -161,7 +159,14 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         newsSectionContainer = view.findViewById(R.id.newsSectionContainer)
         recentGradesSectionContainer = view.findViewById(R.id.recentGradesSectionContainer)
         tableRecentGrades = view.findViewById(R.id.tableRecentGrades)
-        topLoadingBar = view.findViewById(R.id.top_loading_bar) // Inicializa a barra
+        topLoadingBar = view.findViewById(R.id.top_loading_bar)
+    }
+
+    private fun setupAdapters() {
+        carouselAdapter = CarouselAdapter()
+        newsAdapter = NewsAdapter()
+        viewPager?.adapter = carouselAdapter
+        newsRecyclerView?.adapter = newsAdapter
     }
 
     private fun setupRecyclerView() {
@@ -173,23 +178,32 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
             isDataLoaded = false
             checkInternetAndLoadData()
         }
+
+        swipeRefreshLayout?.setOnRefreshListener {
+            Log.d("HomeFragment", "Pull-to-Refresh acionado")
+            // Oculta o indicador padrão imediatamente para usar o nosso customizado
+            swipeRefreshLayout?.isRefreshing = false
+            buscarDadosAtualizados()
+        }
     }
 
     // --- Data Fetching & Processing ---
 
     private fun checkInternetAndLoadData() {
         if (hasInternetConnection()) {
+            // Se não há dados carregados (primeira vez), verificamos o cache
             if (!isDataLoaded) {
                 val hasCache = loadCache()
                 if (hasCache) {
                     showContentState()
-                    setupUI()
-                    setupRecentGradesTable(recentGradesCache)
+                    updateUiWithCurrentData()
                     isDataLoaded = true
                 } else {
+                    // Se não tem cache, mostra a tela de loading principal
                     showLoadingState()
                 }
             }
+            // Sempre busca os dados mais recentes da internet em segundo plano
             fetchDataInBackground()
         } else {
             showOfflineState()
@@ -197,41 +211,40 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
     }
 
     private fun buscarDadosAtualizados() {
-        isDataLoaded = false
-        checkInternetAndLoadData()
-        (requireActivity() as? MainActivity)?.setRefreshing(false)
+        // Apenas chama a busca de dados. A lógica de mostrar o loading
+        // agora está centralizada em fetchDataInBackground().
+        fetchDataInBackground()
     }
 
     private fun fetchDataInBackground() {
-        // Mostrar a barra de carregamento no topo
-        topLoadingBar?.visibility = View.VISIBLE
+        // Mostra a barra de carregamento do topo se o conteúdo principal já estiver visível,
+        // indicando uma atualização em segundo plano (seja por pull-to-refresh ou outra ação).
+        if (contentContainer?.visibility == View.VISIBLE) {
+            topLoadingBar?.visibility = View.VISIBLE
+        }
 
         lifecycleScope.launch {
             try {
-                // Buscar home page (para verificação de login)
                 val homeDoc = async(Dispatchers.IO) { fetchPageData(HOME_URL) }.await()
-
                 if (isFragmentDestroyed) return@launch
 
                 if (isValidSession(homeDoc)) {
-                    // Processar carrossel e notícias imediatamente
                     processPageContent(homeDoc)
                     saveCache()
-                    showContentState()
-                    setupUI()
 
-                    // Buscar dados de calendário e notas em paralelo
+                    withContext(Dispatchers.Main) {
+                        if (isFragmentDestroyed) return@withContext
+                        showContentState()
+                        updateUiWithCurrentData()
+                    }
+
                     val gradesDoc = async(Dispatchers.IO) { fetchPageData(NOTAS_URL) }
                     val calendarDocsDeferred = (1..MESES).map { mes ->
                         async(Dispatchers.IO) { fetchPageData("$CALENDARIO_URL_BASE?mes%5B%5D=$mes") }
                     }
 
-                    val calendarDocs = try {
-                        awaitAll(*calendarDocsDeferred.toTypedArray())
-                    } catch (e: Exception) {
-                        Log.e("HomeFragment", "Erro ao buscar calendário", e)
-                        emptyList()
-                    }
+                    val calendarDocs = try { awaitAll(*calendarDocsDeferred.toTypedArray()) }
+                    catch (e: Exception) { emptyList() }
 
                     val allExams = parseAllCalendarData(calendarDocs)
                     val allGrades = parseAllGradesData(gradesDoc.await())
@@ -253,8 +266,8 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
                     if (!isFragmentDestroyed) handleDataFetchError(e)
                 }
             } finally {
-                // Esconder a barra de carregamento no topo
                 withContext(Dispatchers.Main) {
+                    // Garante que a barra de carregamento do topo seja ocultada ao final
                     topLoadingBar?.visibility = View.GONE
                 }
             }
@@ -268,7 +281,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
             val cookies = cookieManager.getCookie(url)
             Jsoup.connect(url)
                 .header("Cookie", cookies ?: "")
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/536.36")
                 .timeout(20000)
                 .get()
         } catch (e: IOException) {
@@ -289,7 +302,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
                 if (cells.size < 5) continue
 
                 try {
-                    // Ignorar provas de recuperação
                     val tipo = cells[2].text().lowercase()
                     if (tipo.contains("rec")) continue
 
@@ -377,19 +389,21 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
     // --- UI & State Management ---
 
-    private fun setupUI() {
-        setupCarouselWithLoading()
-        setupNews()
-    }
-
-    private fun setupNews() {
+    private fun updateUiWithCurrentData() {
         if (isFragmentDestroyed) return
-        if (newsItems.isNotEmpty()) {
-            newsSectionContainer?.visibility = View.VISIBLE
-            newsRecyclerView?.adapter = NewsAdapter()
+
+        carouselAdapter.notifyDataSetChanged()
+        newsAdapter.notifyDataSetChanged()
+
+        newsSectionContainer?.visibility = if (newsItems.isNotEmpty()) View.VISIBLE else View.GONE
+        if (carouselItems.isNotEmpty()) {
+            carouselLoadingIndicator?.visibility = View.GONE
+            viewPager?.visibility = View.VISIBLE
         } else {
-            newsSectionContainer?.visibility = View.GONE
+            viewPager?.visibility = View.GONE
         }
+
+        setupRecentGradesTable(recentGradesCache)
     }
 
     private fun setupRecentGradesTable(grades: List<NotaRecente>) {
@@ -405,7 +419,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
 
         recentGradesSectionContainer?.visibility = View.VISIBLE
 
-        // Header Row
         val headerRow = TableRow(context)
         headerRow.setBackgroundColor(ContextCompat.getColor(context, R.color.header_bg))
         headerRow.addView(createGradeTableCell("Código", true, context))
@@ -413,7 +426,6 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         headerRow.addView(createGradeTableCell("Nota", true, context))
         tableRecentGrades?.addView(headerRow)
 
-        // Data Rows
         for (grade in grades) {
             val dataRow = TableRow(context)
             dataRow.addView(createGradeTableCell(grade.codigo, false, context))
@@ -514,8 +526,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         if (!isDataLoaded) {
             if (loadCache()) {
                 showContentState()
-                setupUI()
-                setupRecentGradesTable(recentGradesCache)
+                updateUiWithCurrentData()
             } else {
                 showOfflineState()
             }
@@ -628,37 +639,7 @@ class HomeFragment : Fragment(), MainActivity.RefreshableFragment {
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    private fun setupCarouselWithLoading() {
-        if (carouselItems.isEmpty() || isFragmentDestroyed) return
-        showCarouselLoading()
-        configureCarouselHeight()
-        handler.postDelayed({
-            if (isFragmentDestroyed || !isCarouselLoading) return@postDelayed
-            setupCarousel()
-            hideCarouselLoading()
-        }, CAROUSEL_LOADING_DELAY)
-    }
-
-    private fun setupCarousel() {
-        if (carouselItems.isEmpty() || isFragmentDestroyed) return
-        viewPager?.adapter = CarouselAdapter()
-    }
-
-    private fun showCarouselLoading() {
-        if (isFragmentDestroyed) return
-        isCarouselLoading = true
-        carouselLoadingIndicator?.visibility = View.VISIBLE
-        viewPager?.visibility = View.INVISIBLE
-    }
-
-    private fun hideCarouselLoading() {
-        if (isFragmentDestroyed) return
-        isCarouselLoading = false
-        carouselLoadingIndicator?.visibility = View.GONE
-        viewPager?.visibility = View.VISIBLE
-    }
-
-    // Adapters e ViewHolders
+    // Adapters e ViewHolders (agora podem ser acessados pela instância da classe)
     private inner class CarouselAdapter : RecyclerView.Adapter<CarouselViewHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = CarouselViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_carousel, parent, false))
         override fun onBindViewHolder(holder: CarouselViewHolder, position: Int) {

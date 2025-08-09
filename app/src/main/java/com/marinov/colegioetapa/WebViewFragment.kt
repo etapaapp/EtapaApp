@@ -65,7 +65,7 @@ class WebViewFragment : Fragment() {
     }
     companion object {
         private const val ARG_URL = "url"
-        private const val HOME_PATH = "https://areaexclusiva.colegioetapa.com.br/home"
+        private const val HOME_URL_IDENTIFIER = "areaexclusiva.colegioetapa.com.br/home"
         private const val PREFS_NAME = "app_prefs"
         private const val AUTOFILL_PREFS = "autofill_prefs"
         private const val KEY_ASKED_STORAGE = "asked_storage"
@@ -160,7 +160,6 @@ class WebViewFragment : Fragment() {
             userAgentString = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15"
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
-            // Forçar tema escuro usando o método original para manter compatibilidade
             if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
                 @Suppress("DEPRECATION")
                 WebSettingsCompat.setForceDark(
@@ -179,59 +178,64 @@ class WebViewFragment : Fragment() {
         webView.addJavascriptInterface(JsInterface(sharedPrefs), "AndroidAutofill")
         setupWebViewSecurity()
         checkStoragePermissions()
-        arguments?.getString(ARG_URL)?.let { webView.loadUrl(it) }
-        webView.webChromeClient = WebChromeClient()
+
+        // --- INÍCIO DA CORREÇÃO ---
+        // A lógica de detecção de URL foi reescrita para maior robustez.
         webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String) {
-                removeHeader(view)
-                injectAutoFillScript(view)
-                val jsCheck = "(function(){" +
-                        "var a=document.querySelector('#home_banners_carousel > div > div.carousel-item.active > a > img');" +
-                        "var b=document.querySelector('#page-content-wrapper .border-blue');" +
-                        "return (a!==null&&b!==null).toString();})();"
-                view.evaluateJavascript(jsCheck) { result ->
-                    if (result.trim('"') == "true" && url.startsWith(HOME_PATH)) {
-                        simulateHomeButtonClick()
-                    }
+
+            // Este método é chamado ANTES do WebView carregar uma nova URL.
+            // É ideal para interceptar a navegação para a home.
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url.toString()
+                if (isHomeUrl(url)) {
+                    Log.d("WebViewFragment", "Home URL detectada em shouldOverrideUrlLoading. Navegando para a Home nativa.")
+                    simulateHomeButtonClick()
+                    return true // Retorna true para dizer ao WebView: "Eu cuidei disso, não carregue a URL".
                 }
+                return super.shouldOverrideUrlLoading(view, request) // Para todas as outras URLs, deixa o WebView carregar normalmente.
+            }
+
+            // Este método é chamado DEPOIS que a página termina de carregar.
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
+
+                // A injeção de scripts e remoção do header devem ocorrer aqui.
+                removeHeader(view)
+                injectAutoFillScript(view) // Lógica de autofill mantida intacta.
                 if (isSystemDarkMode()) injectCssDarkMode(view)
+
+                // Esta verificação é um fallback. Se o WebView abrir diretamente na home,
+                // shouldOverrideUrlLoading não será chamado, então verificamos aqui.
+                if (isHomeUrl(url)) {
+                    Log.d("WebViewFragment", "Home URL detectada em onPageFinished. Navegando para a Home nativa.")
+                    simulateHomeButtonClick()
+                }
+
                 showWebViewWithAnimation(view)
                 layoutSemInternet.visibility = View.GONE
             }
 
-            override fun onReceivedError(
-                view: WebView,
-                request: WebResourceRequest,
-                error: WebResourceError
-            ) {
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (!isOnline()) showNoInternetUI()
             }
 
-            override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
-                injectAutoFillScript(view)
-
-                // Verificar se chegou na página home através do histórico também
-                if (url.startsWith(HOME_PATH)) {
-                    // Pequeno delay para garantir que a página carregou completamente
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        val jsCheck = "(function(){" +
-                                "var a=document.querySelector('#home_banners_carousel > div > div.carousel-item.active > a > img');" +
-                                "var b=document.querySelector('#page-content-wrapper .border-blue');" +
-                                "return (a!==null&&b!==null).toString();})();"
-                        view.evaluateJavascript(jsCheck) { result ->
-                            if (result.trim('"') == "true") {
-                                // Simular clique no botão "início" do menu
-                                simulateHomeButtonClick()
-                            }
-                        }
-                    }, 1000)
-                }
+            // Função auxiliar para verificar de forma limpa se a URL é a da home.
+            private fun isHomeUrl(url: String?): Boolean {
+                return url?.contains(HOME_URL_IDENTIFIER) == true
             }
         }
+        // --- FIM DA CORREÇÃO ---
+
+        arguments?.getString(ARG_URL)?.let { webView.loadUrl(it) }
+        webView.webChromeClient = WebChromeClient()
         configureDownloadListener()
     }
+
     private fun simulateHomeButtonClick() {
-        (activity as? MainActivity)?.navigateToHome()
+        // Garante que a navegação ocorra na thread principal e não bloqueie o WebView.
+        Handler(Looper.getMainLooper()).post {
+            (activity as? MainActivity)?.navigateToHome()
+        }
     }
 
     private fun removeHeader(view: WebView) {
