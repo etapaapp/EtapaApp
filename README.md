@@ -43,6 +43,7 @@ Android:
       2. Android System Webview na versão mais recente possível.
 
   Baixe o apk aqui (baixe a versão mais recente disponível, identificada em verde com "Latest"): https://github.com/etapaapp/EtapaApp/releases
+  
   Para smartwatches baixe aqui: https://github.com/etapaapp/EtapaAppForSmartwatch/releases
 
 Windows:
