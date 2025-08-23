@@ -42,6 +42,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
 import java.util.Calendar
+import java.util.Objects
 
 class HomeFragment : Fragment() {
 
@@ -67,8 +68,6 @@ class HomeFragment : Fragment() {
     // --- State ---
     private var shouldBlockNavigation = false
     private var isFragmentDestroyed = false
-    private var hasBeenVisible = false
-    private var isDataLoaded = false
 
     // --- Data Lists ---
     private val carouselItems: MutableList<CarouselItem> = mutableListOf()
@@ -78,9 +77,21 @@ class HomeFragment : Fragment() {
     private val handler = Handler(Looper.getMainLooper())
 
     // --- Data Classes Internas ---
+    data class NotaRecente(val codigo: String, val conjunto: String, val nota: String, val data: Calendar) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+            other as NotaRecente
+            return codigo == other.codigo && conjunto == other.conjunto && nota == other.nota
+        }
+
+        override fun hashCode(): Int {
+            return Objects.hash(codigo, conjunto, nota)
+        }
+    }
     data class ProvaCalendario(val data: Calendar, val codigo: String, val conjunto: Int)
     data class Nota(val codigo: String, val conjunto: Int, val valor: String)
-    data class NotaRecente(val codigo: String, val conjunto: String, val nota: String, val data: Calendar)
+
 
     // --- Constantes ---
     private companion object {
@@ -95,6 +106,8 @@ class HomeFragment : Fragment() {
         const val OUT_URL = "https://areaexclusiva.colegioetapa.com.br"
         const val MAX_RECENT_GRADES = 8
         const val MESES = 12
+        // **CORREÇÃO: User Agent atualizado conforme solicitado**
+        const val USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15"
     }
 
     // --- Lifecycle & Setup ---
@@ -118,7 +131,7 @@ class HomeFragment : Fragment() {
         setupRecyclerView()
         setupListeners()
         configureCarouselHeight()
-        checkInternetAndLoadData()
+        loadInitialData()
     }
 
     override fun onPause() {
@@ -129,10 +142,6 @@ class HomeFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         shouldBlockNavigation = false
-        if (hasBeenVisible && !isDataLoaded) {
-            checkInternetAndLoadData()
-        }
-        hasBeenVisible = true
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -175,50 +184,43 @@ class HomeFragment : Fragment() {
 
     private fun setupListeners() {
         btnTentarNovamente?.setOnClickListener {
-            isDataLoaded = false
-            checkInternetAndLoadData()
+            loadInitialData()
         }
 
         swipeRefreshLayout?.setOnRefreshListener {
-            Log.d("HomeFragment", "Pull-to-Refresh acionado")
-            // Oculta o indicador padrão imediatamente para usar o nosso customizado
             swipeRefreshLayout?.isRefreshing = false
-            buscarDadosAtualizados()
+            fetchDataFromServer()
         }
     }
 
     // --- Data Fetching & Processing ---
 
-    private fun checkInternetAndLoadData() {
-        if (hasInternetConnection()) {
-            // Se não há dados carregados (primeira vez), verificamos o cache
-            if (!isDataLoaded) {
-                val hasCache = loadCache()
-                if (hasCache) {
-                    showContentState()
-                    updateUiWithCurrentData()
-                    isDataLoaded = true
-                } else {
-                    // Se não tem cache, mostra a tela de loading principal
-                    showLoadingState()
-                }
-            }
-            // Sempre busca os dados mais recentes da internet em segundo plano
-            fetchDataInBackground()
+    private fun loadInitialData() {
+        val hasContentCache = loadCache()
+        updateUiWithCurrentData()
+
+        val hasAnyCache = hasContentCache || recentGradesCache.isNotEmpty()
+
+        if (!hasAnyCache) {
+            showLoadingState()
         } else {
+            showContentState()
+        }
+
+        if (hasInternetConnection()) {
+            fetchDataFromServer()
+        } else if (!hasAnyCache) {
             showOfflineState()
         }
     }
 
-    private fun buscarDadosAtualizados() {
-        // Apenas chama a busca de dados. A lógica de mostrar o loading
-        // agora está centralizada em fetchDataInBackground().
-        fetchDataInBackground()
-    }
-
-    private fun fetchDataInBackground() {
-        // Mostra a barra de carregamento do topo se o conteúdo principal já estiver visível,
-        // indicando uma atualização em segundo plano (seja por pull-to-refresh ou outra ação).
+    /**
+     * **MÉTODO REVISADO:** Busca todos os dados do servidor.
+     * Agora exibe a barra de loading superior sempre que o conteúdo principal já estiver visível.
+     */
+    private fun fetchDataFromServer() {
+        // **CORREÇÃO: Exibe a barra superior se o conteúdo já estiver visível (cache),
+        // indicando uma atualização em segundo plano.**
         if (contentContainer?.visibility == View.VISIBLE) {
             topLoadingBar?.visibility = View.VISIBLE
         }
@@ -232,32 +234,31 @@ class HomeFragment : Fragment() {
                     processPageContent(homeDoc)
                     saveCache()
 
+                    val gradesDocDeferred = async(Dispatchers.IO) { fetchPageData(NOTAS_URL) }
+                    val calendarDocsDeferred = (1..MESES).map { mes ->
+                        async(Dispatchers.IO) { fetchPageData("$CALENDARIO_URL_BASE?mes%5B%5D=$mes") }
+                    }
+                    val calendarDocs = try { awaitAll(*calendarDocsDeferred.toTypedArray()) } catch (e: Exception) { emptyList() }
+                    val gradesDoc = gradesDocDeferred.await()
+
+                    val allExams = parseAllCalendarData(calendarDocs)
+                    val allGrades = parseAllGradesData(gradesDoc)
+                    val newRecentGrades = findRecentGrades(allExams, allGrades)
+
+                    if (newRecentGrades != recentGradesCache) {
+                        Log.d("HomeFragment", "Novas notas encontradas. Atualizando a UI.")
+                        recentGradesCache = newRecentGrades
+                        saveRecentGradesCache(newRecentGrades)
+                        withContext(Dispatchers.Main) {
+                            setupRecentGradesTable(newRecentGrades)
+                        }
+                    }
+
                     withContext(Dispatchers.Main) {
                         if (isFragmentDestroyed) return@withContext
                         showContentState()
                         updateUiWithCurrentData()
                     }
-
-                    val gradesDoc = async(Dispatchers.IO) { fetchPageData(NOTAS_URL) }
-                    val calendarDocsDeferred = (1..MESES).map { mes ->
-                        async(Dispatchers.IO) { fetchPageData("$CALENDARIO_URL_BASE?mes%5B%5D=$mes") }
-                    }
-
-                    val calendarDocs = try { awaitAll(*calendarDocsDeferred.toTypedArray()) }
-                    catch (e: Exception) { emptyList() }
-
-                    val allExams = parseAllCalendarData(calendarDocs)
-                    val allGrades = parseAllGradesData(gradesDoc.await())
-                    val recentGrades = findRecentGrades(allExams, allGrades)
-
-                    saveRecentGradesCache(recentGrades)
-                    recentGradesCache = recentGrades
-
-                    withContext(Dispatchers.Main) {
-                        setupRecentGradesTable(recentGrades)
-                    }
-
-                    isDataLoaded = true
                 } else {
                     handleInvalidSession()
                 }
@@ -267,7 +268,6 @@ class HomeFragment : Fragment() {
                 }
             } finally {
                 withContext(Dispatchers.Main) {
-                    // Garante que a barra de carregamento do topo seja ocultada ao final
                     topLoadingBar?.visibility = View.GONE
                 }
             }
@@ -281,7 +281,7 @@ class HomeFragment : Fragment() {
             val cookies = cookieManager.getCookie(url)
             Jsoup.connect(url)
                 .header("Cookie", cookies ?: "")
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/536.36")
+                .userAgent(USER_AGENT) // **CORREÇÃO: Usando o novo User Agent**
                 .timeout(20000)
                 .get()
         } catch (e: IOException) {
@@ -367,7 +367,7 @@ class HomeFragment : Fragment() {
         val gradesMap = allGrades.associateBy { "${it.codigo}-${it.conjunto}" }
         val today = Calendar.getInstance()
 
-        return allExams
+        val recentGrades = allExams
             .filter { it.data.before(today) || it.data == today }
             .sortedByDescending { it.data }
             .mapNotNull { exam ->
@@ -385,6 +385,8 @@ class HomeFragment : Fragment() {
             }
             .distinctBy { "${it.codigo}-${it.conjunto}" }
             .take(MAX_RECENT_GRADES)
+
+        return recentGrades.sortedByDescending { it.data }
     }
 
     // --- UI & State Management ---
@@ -394,12 +396,12 @@ class HomeFragment : Fragment() {
 
         carouselAdapter.notifyDataSetChanged()
         newsAdapter.notifyDataSetChanged()
-
         newsSectionContainer?.visibility = if (newsItems.isNotEmpty()) View.VISIBLE else View.GONE
         if (carouselItems.isNotEmpty()) {
             carouselLoadingIndicator?.visibility = View.GONE
             viewPager?.visibility = View.VISIBLE
         } else {
+            carouselLoadingIndicator?.visibility = View.VISIBLE
             viewPager?.visibility = View.GONE
         }
 
@@ -426,7 +428,8 @@ class HomeFragment : Fragment() {
         headerRow.addView(createGradeTableCell("Nota", true, context))
         tableRecentGrades?.addView(headerRow)
 
-        for (grade in grades) {
+        val sortedGrades = grades.sortedByDescending { it.data }
+        for (grade in sortedGrades) {
             val dataRow = TableRow(context)
             dataRow.addView(createGradeTableCell(grade.codigo, false, context))
             dataRow.addView(createGradeTableCell(grade.conjunto, false, context))
@@ -451,8 +454,7 @@ class HomeFragment : Fragment() {
     fun onLoginSuccess() {
         Log.d("HomeFragment", "Login bem-sucedido - forçando recarregamento")
         clearCache()
-        isDataLoaded = false
-        checkInternetAndLoadData()
+        loadInitialData()
     }
 
     private fun configureCarouselHeight() {
@@ -516,20 +518,14 @@ class HomeFragment : Fragment() {
     private fun handleInvalidSession() {
         if (isFragmentDestroyed) return
         clearCache()
-        isDataLoaded = false
         navigateToWebView(OUT_URL)
     }
 
     private fun handleDataFetchError(e: Exception) {
         if (isFragmentDestroyed) return
         Log.e("HomeFragment", "Erro ao buscar dados: ${e.message}", e)
-        if (!isDataLoaded) {
-            if (loadCache()) {
-                showContentState()
-                updateUiWithCurrentData()
-            } else {
-                showOfflineState()
-            }
+        if (carouselItems.isEmpty() && newsItems.isEmpty() && recentGradesCache.isEmpty()) {
+            showOfflineState()
         }
     }
 
@@ -559,43 +555,43 @@ class HomeFragment : Fragment() {
         if (isFragmentDestroyed) return false
         val context = context ?: return false
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val gson = Gson()
+        val carouselType = object : TypeToken<MutableList<CarouselItem>>() {}.type
+        val newsType = object : TypeToken<MutableList<NewsItem>>() {}.type
+        val recentGradesType = object : TypeToken<List<NotaRecente>>() {}.type
+
+        val recentGradesJson = prefs.getString(KEY_RECENT_GRADES, null)
+        if (recentGradesJson != null) {
+            val loadedGrades: List<NotaRecente> = gson.fromJson(recentGradesJson, recentGradesType)
+            recentGradesCache = loadedGrades.sortedByDescending { it.data }
+        }
+
         val cacheTimestamp = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
         if (System.currentTimeMillis() - cacheTimestamp > 24 * 60 * 60 * 1000L) {
-            clearCache()
             return false
         }
-        val gson = Gson()
+
         val carouselJson = prefs.getString(KEY_CAROUSEL_ITEMS, null)
         val newsJson = prefs.getString(KEY_NEWS_ITEMS, null)
-        val recentGradesJson = prefs.getString(KEY_RECENT_GRADES, null)
 
         if (carouselJson != null) {
-            val carouselType = object : TypeToken<MutableList<CarouselItem>>() {}.type
-            val newsType = object : TypeToken<MutableList<NewsItem>>() {}.type
-            val recentGradesType = object : TypeToken<List<NotaRecente>>() {}.type
-
             carouselItems.clear()
             carouselItems.addAll(gson.fromJson(carouselJson, carouselType))
-
-            if (newsJson != null) {
-                newsItems.clear()
-                newsItems.addAll(gson.fromJson(newsJson, newsType))
-            }
-
-            if (recentGradesJson != null) {
-                recentGradesCache = gson.fromJson(recentGradesJson, recentGradesType)
-            }
-
-            return true
         }
-        return false
+        if (newsJson != null) {
+            newsItems.clear()
+            newsItems.addAll(gson.fromJson(newsJson, newsType))
+        }
+
+        return carouselJson != null || newsJson != null
     }
 
     private fun clearCache() {
         context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit {
             clear()
-            apply()
         }
+        carouselItems.clear()
+        newsItems.clear()
         recentGradesCache = emptyList()
     }
 
@@ -639,7 +635,7 @@ class HomeFragment : Fragment() {
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    // Adapters e ViewHolders (agora podem ser acessados pela instância da classe)
+    // Adapters e ViewHolders
     private inner class CarouselAdapter : RecyclerView.Adapter<CarouselViewHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = CarouselViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_carousel, parent, false))
         override fun onBindViewHolder(holder: CarouselViewHolder, position: Int) {
