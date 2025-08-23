@@ -301,33 +301,6 @@
                     android:textAppearance="?android:attr/textAppearanceListItem" />
             </LinearLayout>
 
-            <!-- Escreve Etapa (enviar redação) -->
-            <LinearLayout
-                android:id="@+id/option_escreve_enviar"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingVertical="16dp"
-                android:paddingHorizontal="12dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:background="?android:attr/selectableItemBackground">
-
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@drawable/ic_escreve_enviar"
-                    android:contentDescription="Escreve Etapa (enviar)"
-                    android:layout_marginEnd="16dp"
-                    app:tint="?attr/colorOnSurface" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Escreve Etapa (enviar redação)"
-                    android:textAppearance="?android:attr/textAppearanceListItem" />
-            </LinearLayout>
-
             <!-- Escreve Etapa (ver redação) -->
             <LinearLayout
                 android:id="@+id/option_escreve_ver"

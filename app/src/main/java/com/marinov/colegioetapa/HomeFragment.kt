@@ -106,7 +106,6 @@ class HomeFragment : Fragment() {
         const val OUT_URL = "https://areaexclusiva.colegioetapa.com.br"
         const val MAX_RECENT_GRADES = 8
         const val MESES = 12
-        // **CORREÇÃO: User Agent atualizado conforme solicitado**
         const val USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15"
     }
 
@@ -195,32 +194,38 @@ class HomeFragment : Fragment() {
 
     // --- Data Fetching & Processing ---
 
+    /**
+     * **MÉTODO CORRIGIDO:** Lógica de carregamento inicial.
+     * Agora, a conexão é verificada primeiro. Se o dispositivo estiver offline,
+     * a tela "sem internet" é exibida imediatamente, independentemente do cache.
+     * Se estiver online, o comportamento "cache-first" é mantido.
+     */
     private fun loadInitialData() {
+        // Primeiro, carregamos o que estiver em cache. Isso segue o princípio "cache-first".
         val hasContentCache = loadCache()
-        updateUiWithCurrentData()
+        updateUiWithCurrentData() // Prepara os adaptadores com dados do cache, se houver.
 
-        val hasAnyCache = hasContentCache || recentGradesCache.isNotEmpty()
-
-        if (!hasAnyCache) {
-            showLoadingState()
-        } else {
-            showContentState()
-        }
-
+        // Agora, verificamos a conexão com a internet para decidir qual tela mostrar.
         if (hasInternetConnection()) {
+            // Se estiver online, o comportamento é o mesmo de antes:
+            // Mostra o conteúdo do cache ou uma tela de carregamento se o cache estiver vazio.
+            val hasAnyCache = hasContentCache || recentGradesCache.isNotEmpty()
+            if (hasAnyCache) {
+                showContentState()
+            } else {
+                showLoadingState()
+            }
+            // E então, busca os dados mais recentes do servidor.
             fetchDataFromServer()
-        } else if (!hasAnyCache) {
+        } else {
+            // Se estiver offline, a tela de "sem internet" é exibida imediatamente.
+            // Isso atende ao requisito de sempre mostrar essa tela quando não houver rede.
             showOfflineState()
         }
     }
 
-    /**
-     * **MÉTODO REVISADO:** Busca todos os dados do servidor.
-     * Agora exibe a barra de loading superior sempre que o conteúdo principal já estiver visível.
-     */
+
     private fun fetchDataFromServer() {
-        // **CORREÇÃO: Exibe a barra superior se o conteúdo já estiver visível (cache),
-        // indicando uma atualização em segundo plano.**
         if (contentContainer?.visibility == View.VISIBLE) {
             topLoadingBar?.visibility = View.VISIBLE
         }
@@ -281,7 +286,7 @@ class HomeFragment : Fragment() {
             val cookies = cookieManager.getCookie(url)
             Jsoup.connect(url)
                 .header("Cookie", cookies ?: "")
-                .userAgent(USER_AGENT) // **CORREÇÃO: Usando o novo User Agent**
+                .userAgent(USER_AGENT)
                 .timeout(20000)
                 .get()
         } catch (e: IOException) {

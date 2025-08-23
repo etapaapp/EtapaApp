@@ -142,9 +142,6 @@ class MoreFragment : Fragment(), MainActivity.RefreshableFragment { // 1. Implem
         view.findViewById<View>(R.id.option_ead).setOnClickListener {
             (activity as MainActivity).openCustomFragment(EADFragment())
         }
-        view.findViewById<View>(R.id.option_escreve_enviar).setOnClickListener {
-            (activity as MainActivity).openCustomFragment(EscreveEnviarFragment())
-        }
         view.findViewById<View>(R.id.option_escreve_ver).setOnClickListener {
             (activity as MainActivity).openCustomFragment(EscreveVerFragment())
         }
