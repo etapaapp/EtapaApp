@@ -2,6 +2,7 @@ package com.marinov.colegioetapa
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -9,6 +10,8 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -19,6 +22,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
@@ -51,6 +56,10 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             R.id.navigation_more
             // WebViewFragment não tem ID específico pois é aberto via openCustomFragment
         )
+
+        // SharedPreferences para lembrar se já solicitamos a isenção de otimização de bateria
+        private const val PREFS_NAME = "app_prefs"
+        private const val PREF_KEY_BATTERY_REQUESTED = "battery_request_done"
     }
 
     private var currentFragment: Fragment? = null
@@ -115,6 +124,11 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             }
         })
         solicitarPermissaoNotificacao()
+
+        // --- SOLICITA ISENÇÃO DE OTIMIZAÇÃO DE BATERIA ---
+        solicitarIsencaoOtimizacaoBateria()
+        // ---------------------------------------------------
+
         iniciarNotasWorker()
         iniciarUpdateWorker()
     }
@@ -347,6 +361,72 @@ class MainActivity : AppCompatActivity(), WebViewFragment.LoginSuccessListener {
             ExistingPeriodicWorkPolicy.KEEP,
             notasWork
         )
+    }
+
+    /**
+     * Solicita ao usuário que permita isenção das otimizações de bateria (execução irrestrita).
+     * Agora: solicita **diretamente** (sem diálogo) **uma vez** — usa SharedPreferences para marcar que já solicitamos.
+     *
+     * Observação: dependendo da política do Google Play, o uso de REQUEST_IGNORE_BATTERY_OPTIMIZATIONS pode exigir justificativa no app e declaração no Manifest.
+     */
+    @SuppressLint("BatteryLife")
+    private fun solicitarIsencaoOtimizacaoBateria() {
+        try {
+            val pm = getSystemService(POWER_SERVICE) as? PowerManager
+            if (pm == null) {
+                Log.w(TAG, "PowerManager não disponível")
+                return
+            }
+
+            // Se já é ignorado, não precisa pedir
+            if (pm.isIgnoringBatteryOptimizations(packageName)) {
+                return
+            }
+
+            // Verifica se já solicitamos antes
+            val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            val alreadyRequested = prefs.getBoolean(PREF_KEY_BATTERY_REQUESTED, false)
+            if (alreadyRequested) {
+                return
+            }
+
+            // Tenta abrir diretamente a solicitação; se falhar, faz fallback para as configurações gerais.
+            try {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                intent.data = "package:$packageName".toUri()
+                startActivity(intent)
+            } catch (e: ActivityNotFoundException) {
+                Log.w(TAG, "ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS não disponível, abrindo settings geral", e)
+                try {
+                    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    startActivity(intent)
+                } catch (ex: Exception) {
+                    Log.w(TAG, "Não foi possível abrir as configurações de otimização de bateria", ex)
+                }
+            } catch (e: SecurityException) {
+                // Pode ocorrer em alguns dispositivos/versões; tenta abrir a tela geral como fallback
+                Log.w(TAG, "SecurityException ao requisitar isenção de otimização de bateria, tentando settings geral", e)
+                try {
+                    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    startActivity(intent)
+                } catch (ex: Exception) {
+                    Log.w(TAG, "Não foi possível abrir as configurações de otimização de bateria", ex)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Erro ao tentar abrir solicitação de isenção de otimização de bateria", e)
+                try {
+                    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    startActivity(intent)
+                } catch (ex: Exception) {
+                    Log.w(TAG, "Não foi possível abrir as configurações de otimização de bateria", ex)
+                }
+            } finally {
+                // Marca como já solicitado para não repetir nas próximas aberturas.
+                prefs.edit { putBoolean(PREF_KEY_BATTERY_REQUESTED, true) }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Erro ao verificar isenção de otimização de bateria", e)
+        }
     }
 
     override fun onRequestPermissionsResult(
