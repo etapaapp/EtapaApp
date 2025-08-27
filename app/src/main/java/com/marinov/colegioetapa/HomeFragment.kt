@@ -46,7 +46,6 @@ import java.util.Objects
 
 class HomeFragment : Fragment() {
 
-    // --- Views ---
     private var swipeRefreshLayout: SwipeRefreshLayout? = null
     private var viewPager: ViewPager2? = null
     private var newsRecyclerView: RecyclerView? = null
@@ -73,6 +72,7 @@ class HomeFragment : Fragment() {
     private val carouselItems: MutableList<CarouselItem> = mutableListOf()
     private val newsItems: MutableList<NewsItem> = mutableListOf()
     private var recentGradesCache: List<NotaRecente> = emptyList()
+    private var calendarExamsCache: List<ProvaCalendario> = emptyList() // Cache para o calendário
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -100,6 +100,11 @@ class HomeFragment : Fragment() {
         const val KEY_NEWS_ITEMS = "news_items"
         const val KEY_RECENT_GRADES = "recent_grades"
         const val KEY_CACHE_TIMESTAMP = "cache_timestamp"
+        // NOVAS CONSTANTES PARA O CACHE DO CALENDÁRIO
+        const val KEY_CALENDAR_EXAMS = "calendar_exams"
+        const val KEY_CALENDAR_TIMESTAMP = "calendar_timestamp"
+        const val SEVEN_DAYS_IN_MILLIS = 7 * 24 * 60 * 60 * 1000L // 7 dias em milissegundos
+
         const val HOME_URL = "https://areaexclusiva.colegioetapa.com.br/home"
         const val NOTAS_URL = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
         const val CALENDARIO_URL_BASE = "https://areaexclusiva.colegioetapa.com.br/provas/datas"
@@ -194,37 +199,32 @@ class HomeFragment : Fragment() {
 
     // --- Data Fetching & Processing ---
 
-    /**
-     * **MÉTODO CORRIGIDO:** Lógica de carregamento inicial.
-     * Agora, a conexão é verificada primeiro. Se o dispositivo estiver offline,
-     * a tela "sem internet" é exibida imediatamente, independentemente do cache.
-     * Se estiver online, o comportamento "cache-first" é mantido.
-     */
     private fun loadInitialData() {
-        // Primeiro, carregamos o que estiver em cache. Isso segue o princípio "cache-first".
         val hasContentCache = loadCache()
-        updateUiWithCurrentData() // Prepara os adaptadores com dados do cache, se houver.
+        updateUiWithCurrentData()
 
-        // Agora, verificamos a conexão com a internet para decidir qual tela mostrar.
         if (hasInternetConnection()) {
-            // Se estiver online, o comportamento é o mesmo de antes:
-            // Mostra o conteúdo do cache ou uma tela de carregamento se o cache estiver vazio.
             val hasAnyCache = hasContentCache || recentGradesCache.isNotEmpty()
             if (hasAnyCache) {
                 showContentState()
             } else {
                 showLoadingState()
             }
-            // E então, busca os dados mais recentes do servidor.
             fetchDataFromServer()
         } else {
-            // Se estiver offline, a tela de "sem internet" é exibida imediatamente.
-            // Isso atende ao requisito de sempre mostrar essa tela quando não houver rede.
             showOfflineState()
         }
     }
 
 
+    /**
+     * **MÉTODO ATUALIZADO:** Lógica de busca de dados do servidor.
+     * 1.  Verifica a validade do cache do calendário de provas (7 dias).
+     * 2.  Se o cache for válido, usa os dados locais.
+     * 3.  Se o cache for inválido ou não existir, busca os dados do calendário da web e salva em cache.
+     * 4.  Busca as notas da web (sempre, conforme solicitado).
+     * 5.  Processa e exibe os dados.
+     */
     private fun fetchDataFromServer() {
         if (contentContainer?.visibility == View.VISIBLE) {
             topLoadingBar?.visibility = View.VISIBLE
@@ -232,28 +232,46 @@ class HomeFragment : Fragment() {
 
         lifecycleScope.launch {
             try {
+                // Busca o conteúdo da página inicial para validar a sessão e obter carrossel/notícias
                 val homeDoc = async(Dispatchers.IO) { fetchPageData(HOME_URL) }.await()
                 if (isFragmentDestroyed) return@launch
 
                 if (isValidSession(homeDoc)) {
                     processPageContent(homeDoc)
-                    saveCache()
+                    saveCache() // Salva carrossel e notícias
 
-                    val gradesDocDeferred = async(Dispatchers.IO) { fetchPageData(NOTAS_URL) }
-                    val calendarDocsDeferred = (1..MESES).map { mes ->
-                        async(Dispatchers.IO) { fetchPageData("$CALENDARIO_URL_BASE?mes%5B%5D=$mes") }
+                    // --- LÓGICA DE CACHE DO CALENDÁRIO (7 DIAS) ---
+                    val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    val calendarTimestamp = prefs.getLong(KEY_CALENDAR_TIMESTAMP, 0)
+                    val isCalendarCacheValid = System.currentTimeMillis() - calendarTimestamp < SEVEN_DAYS_IN_MILLIS
+
+                    val allExams: List<ProvaCalendario>
+                    if (isCalendarCacheValid && calendarExamsCache.isNotEmpty()) {
+                        Log.d("HomeFragment", "Usando calendário do cache.")
+                        allExams = calendarExamsCache
+                    } else {
+                        Log.d("HomeFragment", "Cache do calendário inválido ou vazio. Buscando da web.")
+                        val calendarDocsDeferred = (1..MESES).map { mes ->
+                            async(Dispatchers.IO) { fetchPageData("$CALENDARIO_URL_BASE?mes%5B%5D=$mes") }
+                        }
+                        val calendarDocs = try { awaitAll(*calendarDocsDeferred.toTypedArray()) } catch (_: Exception) { emptyList() }
+                        allExams = parseAllCalendarData(calendarDocs)
+                        calendarExamsCache = allExams
+                        saveCalendarCache(allExams) // Salva o novo calendário e o timestamp
                     }
-                    val calendarDocs = try { awaitAll(*calendarDocsDeferred.toTypedArray()) } catch (e: Exception) { emptyList() }
-                    val gradesDoc = gradesDocDeferred.await()
+                    // --- FIM DA LÓGICA DE CACHE DO CALENDÁRIO ---
 
-                    val allExams = parseAllCalendarData(calendarDocs)
+                    // Busca as notas (sempre busca, conforme solicitado)
+                    val gradesDoc = withContext(Dispatchers.IO) { fetchPageData(NOTAS_URL) }
+
+                    // Processa as notas com base nos dados do calendário (do cache ou da web)
                     val allGrades = parseAllGradesData(gradesDoc)
                     val newRecentGrades = findRecentGrades(allExams, allGrades)
 
                     if (newRecentGrades != recentGradesCache) {
                         Log.d("HomeFragment", "Novas notas encontradas. Atualizando a UI.")
                         recentGradesCache = newRecentGrades
-                        saveRecentGradesCache(newRecentGrades)
+                        saveRecentGradesCache(newRecentGrades) // Salva as notas recentes para exibição imediata
                         withContext(Dispatchers.Main) {
                             setupRecentGradesTable(newRecentGrades)
                         }
@@ -278,6 +296,7 @@ class HomeFragment : Fragment() {
             }
         }
     }
+
 
     @Throws(IOException::class)
     private fun fetchPageData(url: String): Document? {
@@ -556,6 +575,20 @@ class HomeFragment : Fragment() {
         }
     }
 
+    // NOVO MÉTODO PARA SALVAR O CALENDÁRIO EM CACHE
+    private fun saveCalendarCache(exams: List<ProvaCalendario>) {
+        if (isFragmentDestroyed) return
+        val context = context ?: return
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit {
+            val gson = Gson()
+            putString(KEY_CALENDAR_EXAMS, gson.toJson(exams))
+            putLong(KEY_CALENDAR_TIMESTAMP, System.currentTimeMillis())
+        }
+    }
+
+
+    // MÉTODO ATUALIZADO PARA CARREGAR TODOS OS DADOS DO CACHE
     private fun loadCache(): Boolean {
         if (isFragmentDestroyed) return false
         val context = context ?: return false
@@ -564,13 +597,23 @@ class HomeFragment : Fragment() {
         val carouselType = object : TypeToken<MutableList<CarouselItem>>() {}.type
         val newsType = object : TypeToken<MutableList<NewsItem>>() {}.type
         val recentGradesType = object : TypeToken<List<NotaRecente>>() {}.type
+        val calendarType = object : TypeToken<List<ProvaCalendario>>() {}.type // Tipo para o calendário
 
+        // Carrega notas recentes
         val recentGradesJson = prefs.getString(KEY_RECENT_GRADES, null)
         if (recentGradesJson != null) {
             val loadedGrades: List<NotaRecente> = gson.fromJson(recentGradesJson, recentGradesType)
             recentGradesCache = loadedGrades.sortedByDescending { it.data }
         }
 
+        // Carrega calendário
+        val calendarExamsJson = prefs.getString(KEY_CALENDAR_EXAMS, null)
+        if (calendarExamsJson != null) {
+            calendarExamsCache = gson.fromJson(calendarExamsJson, calendarType)
+        }
+
+
+        // Carrega carrossel e notícias (cache de 24h)
         val cacheTimestamp = prefs.getLong(KEY_CACHE_TIMESTAMP, 0)
         if (System.currentTimeMillis() - cacheTimestamp > 24 * 60 * 60 * 1000L) {
             return false
@@ -591,6 +634,7 @@ class HomeFragment : Fragment() {
         return carouselJson != null || newsJson != null
     }
 
+    // MÉTODO ATUALIZADO PARA LIMPAR TODOS OS CACHES
     private fun clearCache() {
         context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit {
             clear()
@@ -598,7 +642,9 @@ class HomeFragment : Fragment() {
         carouselItems.clear()
         newsItems.clear()
         recentGradesCache = emptyList()
+        calendarExamsCache = emptyList()
     }
+
 
     private fun navigateToWebView(url: String) {
         if (shouldBlockNavigation || isFragmentDestroyed) return
