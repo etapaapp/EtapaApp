@@ -48,6 +48,7 @@ class ProfileFragment : Fragment(), MainActivity.RefreshableFragment {
     private lateinit var ivProfilePhoto: ImageView
     private val handler = Handler(Looper.getMainLooper())
     private val AUTH_CHECK_URL = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
+    private val USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/140.0.7339.39 Mobile/15E148 Safari/604.1"
     private lateinit var sharedPreferences: SharedPreferences
     private var isRefreshing = false
 
@@ -180,6 +181,7 @@ class ProfileFragment : Fragment(), MainActivity.RefreshableFragment {
         val authWebView = WebView(requireContext()).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.userAgentString = USER_AGENT
         }
 
         authWebView.webViewClient = object : WebViewClient() {
@@ -249,6 +251,7 @@ class ProfileFragment : Fragment(), MainActivity.RefreshableFragment {
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
         webSettings.javaScriptCanOpenWindowsAutomatically = true
+        webSettings.userAgentString = USER_AGENT
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
@@ -483,6 +486,7 @@ class ProfileFragment : Fragment(), MainActivity.RefreshableFragment {
                 // Faz o scraping da página de perfil
                 val doc = Jsoup.connect("https://areaexclusiva.colegioetapa.com.br/profile")
                     .header("Cookie", cookies)
+                    .userAgent(USER_AGENT)
                     .get()
 
                 // Encontra a imagem do perfil
@@ -514,6 +518,7 @@ class ProfileFragment : Fragment(), MainActivity.RefreshableFragment {
         return try {
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.setRequestProperty("Cookie", cookies)
+            connection.setRequestProperty("User-Agent", USER_AGENT)
             connection.connect()
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                 val inputStream = connection.inputStream

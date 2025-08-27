@@ -34,7 +34,7 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-class MoreFragment : Fragment(), MainActivity.RefreshableFragment { // 1. Implemente a interface
+class MoreFragment : Fragment(), MainActivity.RefreshableFragment {
 
     private lateinit var ivProfilePhoto: ImageView
     private lateinit var tvStudentName: TextView
@@ -46,6 +46,7 @@ class MoreFragment : Fragment(), MainActivity.RefreshableFragment { // 1. Implem
 
     private lateinit var sharedPreferences: SharedPreferences
     private val AUTH_CHECK_URL = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
+    private val USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/140.0.7339.39 Mobile/15E148 Safari/604.1"
 
     // 2. Variável de controle para refresh
     private var isRefreshing = false
@@ -88,6 +89,7 @@ class MoreFragment : Fragment(), MainActivity.RefreshableFragment { // 1. Implem
         val webSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
+        webSettings.userAgentString = USER_AGENT
 
         checkInternetAndAuthentication()
     }
@@ -217,6 +219,7 @@ class MoreFragment : Fragment(), MainActivity.RefreshableFragment { // 1. Implem
         val authWebView = WebView(requireContext()).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.userAgentString = USER_AGENT
         }
 
         authWebView.webViewClient = object : WebViewClient() {
@@ -498,6 +501,7 @@ class MoreFragment : Fragment(), MainActivity.RefreshableFragment { // 1. Implem
 
                 val doc = Jsoup.connect("https://areaexclusiva.colegioetapa.com.br/profile")
                     .header("Cookie", cookies)
+                    .userAgent(USER_AGENT)
                     .get()
 
                 val imgElement = doc.selectFirst("div.d-flex.justify-content-center img.rounded-circle")
@@ -528,6 +532,7 @@ class MoreFragment : Fragment(), MainActivity.RefreshableFragment { // 1. Implem
         return try {
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.setRequestProperty("Cookie", cookies)
+            connection.setRequestProperty("User-Agent", USER_AGENT)
             connection.connect()
 
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {

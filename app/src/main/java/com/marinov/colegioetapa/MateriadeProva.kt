@@ -184,7 +184,7 @@ class MateriadeProva : Fragment() {
                         val cookieHeader = CookieManager.getInstance().getCookie(currentUrl)
                         Jsoup.connect(currentUrl)
                             .header("Cookie", cookieHeader)
-                            .userAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15")
+                            .userAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/140.0.7339.39 Mobile/15E148 Safari/604.1")
                             .timeout(15000)
                             .get()
                     } catch (e: Exception) {
