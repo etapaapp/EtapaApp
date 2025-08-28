@@ -380,7 +380,32 @@
                         android:text="Etapa Link"
                         android:textAppearance="?android:attr/textAppearanceListItem" />
                 </LinearLayout>
+                <!-- Link ENEM -->
+                <LinearLayout
+                    android:id="@+id/option_link_enem"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingVertical="16dp"
+                    android:paddingHorizontal="12dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:background="?android:attr/selectableItemBackground">
 
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@drawable/ic_enem_link"
+                        android:contentDescription="Link ENEM"
+                        android:layout_marginEnd="16dp"
+                        app:tint="?attr/colorOnSurface" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Link ENEM"
+                        android:textAppearance="?android:attr/textAppearanceListItem" />
+                </LinearLayout>
                 <!-- Material Complementar -->
                 <LinearLayout
                     android:id="@+id/navigation_material"
