@@ -24,7 +24,7 @@ class LinkENEMFragment : Fragment() {
 
     private companion object {
         const val AUTH_CHECK_URL = "https://areaexclusiva.colegioetapa.com.br/provas/notas"
-        const val TARGET_URL = "https://portal.linkenem.com.br/"
+        const val TARGET_URL = "https://areaexclusiva.colegioetapa.com.br/link-enem"
     }
 
     private lateinit var layoutSemInternet: LinearLayout
