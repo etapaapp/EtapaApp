@@ -154,6 +154,9 @@ class MoreFragment : Fragment(), MainActivity.RefreshableFragment {
         view.findViewById<View>(R.id.option_link).setOnClickListener {
             (activity as MainActivity).openCustomFragment(LinkFragment())
         }
+        view.findViewById<View>(R.id.option_link_enem).setOnClickListener {
+            (activity as MainActivity).openCustomFragment(LinkFragment())
+        }
         view.findViewById<View>(R.id.navigation_material).setOnClickListener {
             (activity as MainActivity).openCustomFragment(MaterialFragment())
         }
