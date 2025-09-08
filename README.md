@@ -63,3 +63,10 @@ Windows:
 4. Me reservo no direito de desligar os servidores quando eu quiser.
 5. Em resumo, NÃO é possível compartilhar conteúdos dos materiais que são exibidos por esse app, ou mesmo visualizar fora dele.
 6. Dúvidas? Mande um email para etapa.app@outlook.com.br
+
+# Aviso aos etapados de 2026 (ou depois de 2026)! #
+Vou me formar no 3o ano esse ano (2025) e possivelmente o app não receberá mais updates.....
+
+Caso vc esteja no futuro e esteja lendo isso e queria acesso a função de provas dos anos anteriores, me manda um email que eu te passo as instruções de como compilar o app com essa funcionalidade ativa... (ela deve ser desativada automaticamente após 30/12/25)
+
+As demais funções do app seguirão funcionando normalmente enquanto o Etapa não fizer mudanças drásticas no site....
