@@ -410,8 +410,8 @@ class CalendarioProvas : Fragment() {
         @SuppressLint("NotifyDataSetChanged")
         fun aplicarFiltro(filtro: Int) {
             items = when (filtro) {
-                FILTRO_PROVAS -> dadosOriginais.filter { !it.tipo.contains("1ªrec", ignoreCase = true) }
-                FILTRO_RECUPERACOES -> dadosOriginais.filter { it.tipo.contains("1ªrec", ignoreCase = true) }
+                FILTRO_PROVAS -> dadosOriginais.filter { !it.tipo.contains("rec", ignoreCase = true) }
+                FILTRO_RECUPERACOES -> dadosOriginais.filter { it.tipo.contains("rec", ignoreCase = true) }
                 else -> dadosOriginais
             }
             notifyDataSetChanged()
@@ -441,10 +441,9 @@ class CalendarioProvas : Fragment() {
             holder.txtConjunto.text = item.conjunto
             holder.txtMateria.text = item.materia
 
-            val isRecuperacao = item.tipo.contains("1ªrec", ignoreCase = true)
-            val badgeText = if (isRecuperacao) "1ªREC" else "PROVA"
+            val isRecuperacao = item.tipo.contains("rec", ignoreCase = true)
+            holder.badgeTipo.text = if (isRecuperacao) item.tipo.uppercase(Locale.getDefault()) else "PROVA"
 
-            holder.badgeTipo.text = badgeText
 
             if (isRecuperacao) {
                 holder.badgeContainer.setBackgroundResource(R.drawable.bg_prova_recuperacao)
