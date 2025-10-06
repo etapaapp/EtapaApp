@@ -119,11 +119,27 @@ class NotasFragment : Fragment(), MainActivity.RefreshableFragment { // Implemen
 
             for (j in 2 until cols.size) {
                 val colIndex = j - 2
-                val valText = cols[j].text()
+                val cell = cols[j]
+
+                // *** LÓGICA ATUALIZADA PARA EXTRAIR A NOTA ***
+                // 1. Encontra o div que contém a palavra "Nota".
+                val notaContainer = cell.select("div.d-flex.flex-column").firstOrNull {
+                    it.selectFirst("span.font-weight-bold")?.text()?.equals("Nota", ignoreCase = true) == true
+                }
+
+                // 2. Extrai o texto da nota. Se o contêiner for encontrado, limpa a palavra "Nota".
+                //    Caso contrário, usa o texto da célula inteira como fallback.
+                val valText = if (notaContainer != null) {
+                    notaContainer.text().replace("Nota", "", ignoreCase = true).trim()
+                } else {
+                    cell.text().trim()
+                }
+                // *** FIM DA LÓGICA ATUALIZADA ***
 
                 if (valText != "--") {
                     try {
-                        val value = valText.toDouble()
+                        // Substitui vírgula por ponto para conversão em Double
+                        val value = valText.replace(',', '.').toDouble()
                         sums[colIndex] += value
                         counts[colIndex]++
                     } catch (_: NumberFormatException) {

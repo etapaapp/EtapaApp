@@ -83,6 +83,17 @@ class NotasWorker(appContext: Context, workerParams: WorkerParameters) :
         }
     }
 
+    private fun extractNotaFromCell(cell: Element): String {
+        val notaContainer = cell.select("div.d-flex.flex-column").firstOrNull {
+            it.selectFirst("span.font-weight-bold")?.text()?.equals("Nota", ignoreCase = true) == true
+        }
+        return if (notaContainer != null) {
+            notaContainer.text().replace("Nota", "", ignoreCase = true).trim()
+        } else {
+            cell.text().trim()
+        }
+    }
+
     private fun parseTable(table: Element): Set<Nota> {
         val notas = mutableSetOf<Nota>()
         val rows = table.select("tbody > tr")
@@ -95,10 +106,10 @@ class NotasWorker(appContext: Context, workerParams: WorkerParameters) :
             }
 
             val codigo = cols[1].text().trim()
-            val c1 = cols[2].text().trim()
-            val c2 = cols[3].text().trim()
-            val c3 = cols[4].text().trim()
-            val c4 = cols[5].text().trim()
+            val c1 = extractNotaFromCell(cols[2])
+            val c2 = extractNotaFromCell(cols[3])
+            val c3 = extractNotaFromCell(cols[4])
+            val c4 = extractNotaFromCell(cols[5])
 
             notas.add(Nota(codigo, c1, c2, c3, c4))
         }

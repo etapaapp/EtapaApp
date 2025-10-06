@@ -375,7 +375,17 @@ class HomeFragment : Fragment() {
 
             cols.forEachIndexed { colIndex, td ->
                 conjuntoMap[colIndex]?.let { conjunto ->
-                    val nota = td.text()
+                    // *** LÓGICA ATUALIZADA PARA EXTRAIR A NOTA ***
+                    val notaContainer = td.select("div.d-flex.flex-column").firstOrNull {
+                        it.selectFirst("span.font-weight-bold")?.text()?.equals("Nota", ignoreCase = true) == true
+                    }
+                    val nota = if (notaContainer != null) {
+                        notaContainer.text().replace("Nota", "", ignoreCase = true).trim()
+                    } else {
+                        td.text().trim()
+                    }
+                    // *** FIM DA LÓGICA ATUALIZADA ***
+
                     if (nota.isNotEmpty()) {
                         allGrades.add(Nota(codigo, conjunto, nota))
                     }
