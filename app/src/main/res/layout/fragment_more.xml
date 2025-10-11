@@ -194,6 +194,32 @@
                     android:textAppearance="?android:attr/textAppearanceListItem" />
             </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/option_calendario_anual"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingVertical="16dp"
+                android:paddingHorizontal="12dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?android:attr/selectableItemBackground">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_calendario_provas"
+                    android:contentDescription="Calendário Anual"
+                    android:layout_marginEnd="16dp"
+                    app:tint="?attr/colorOnSurface" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Calendário Anual"
+                    android:textAppearance="?android:attr/textAppearanceListItem" />
+            </LinearLayout>
+
             <!-- Cardápio -->
             <LinearLayout
                 android:id="@+id/option_food"

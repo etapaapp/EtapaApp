@@ -132,6 +132,9 @@ class MoreFragment : Fragment(), MainActivity.RefreshableFragment {
         view.findViewById<View>(R.id.option_boletim_simulados).setOnClickListener {
             (activity as MainActivity).openCustomFragment(BoletimSimuladosFragment())
         }
+        view.findViewById<View>(R.id.option_calendario_anual).setOnClickListener {
+            (activity as MainActivity).openCustomFragment(CalendarioAnualFragment())
+        }
         view.findViewById<View>(R.id.option_food).setOnClickListener {
             (activity as MainActivity).openCustomFragment(CardapioFragment())
         }
