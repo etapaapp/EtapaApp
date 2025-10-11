@@ -144,9 +144,6 @@ class MoreFragment : Fragment(), MainActivity.RefreshableFragment {
         view.findViewById<View>(R.id.option_ead_online).setOnClickListener {
             (activity as MainActivity).openCustomFragment(EADOnlineFragment())
         }
-        view.findViewById<View>(R.id.option_ead).setOnClickListener {
-            (activity as MainActivity).openCustomFragment(EADFragment())
-        }
         view.findViewById<View>(R.id.option_escreve_ver).setOnClickListener {
             (activity as MainActivity).openCustomFragment(EscreveVerFragment())
         }
